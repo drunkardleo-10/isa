@@ -30,13 +30,18 @@ struct ContentView: View {
                 Color(nsColor: .windowBackgroundColor)
 
                 ForEach(viewModel.tabs) { tab in
-                    WebView(tab: tab)
-                        .opacity(tab.id == viewModel.selectedTabId && !tab.isNewTabState ? 1 : 0)
-                        .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isNewTabState && !tab.isAddressOverlayPresented)
+                    if !tab.isNewTabState || tab.webView != nil || tab.isSleeping {
+                        WebView(tab: tab)
+                            .opacity(tab.id == viewModel.selectedTabId && !tab.isNewTabState ? 1 : 0)
+                            .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isNewTabState && !tab.isAddressOverlayPresented)
+                    }
                 }
 
                 ActiveTabOverlayView(tab: viewModel.activeTab, viewModel: viewModel)
             }
+        }
+        .onAppear {
+            PerformanceMonitor.shared.log(event: "WindowReady", details: "Window content rendered on screen")
         }
         .ignoresSafeArea(.all, edges: .top)
         .background(Color(nsColor: .windowBackgroundColor))
@@ -397,6 +402,7 @@ struct ActiveTabOverlayView: View {
     private func navigateWithSuggestion(_ item: SuggestionItem) {
         suggestions = []
         selectedSuggestionIndex = -1
+        HistoryManager.shared.recordSearch(query: item.query)
         viewModel.navigate(tab: tab, to: item.fullURL)
     }
 
@@ -405,6 +411,9 @@ struct ActiveTabOverlayView: View {
         guard !text.isEmpty else { return }
         suggestions = []
         selectedSuggestionIndex = -1
+        if !viewModel.isDirectURL(text) {
+            HistoryManager.shared.recordSearch(query: text)
+        }
         viewModel.navigate(tab: tab, to: text)
     }
 }
@@ -417,36 +426,29 @@ struct SuggestionRowView: View {
 
     var body: some View {
         Button(action: onSelect) {
-            HStack(spacing: 8) {
-                if item.isSearch {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                        .frame(width: 16)
-                    Text(item.displayURL)
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                    if !item.displayTitle.isEmpty {
-                        Text(item.displayTitle)
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                } else {
-                    Text(item.displayURL)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                    if !item.displayTitle.isEmpty && item.displayTitle != item.displayURL {
-                        Text(item.displayTitle)
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                }
+            HStack(spacing: 10) {
+                Image(systemName: item.isRecentSearch ? "clock.arrow.circlepath" : "magnifyingglass")
+                    .font(.system(size: 12))
+                    .foregroundColor(item.isRecentSearch ? .accentColor : .secondary)
+                    .frame(width: 16)
+
+                Text(item.query)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+
                 Spacer()
+
+                if item.isRecentSearch {
+                    Text("Search history")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary.opacity(0.8))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule().fill(Color.primary.opacity(0.06))
+                        )
+                }
             }
             .padding(.horizontal, 14)
             .frame(height: 36)

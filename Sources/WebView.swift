@@ -8,13 +8,15 @@ struct WebView: NSViewRepresentable {
         Coordinator(tab: tab)
     }
 
-    func makeNSView(context: Context) -> WKWebView {
-        tab.webView.navigationDelegate = context.coordinator
-        return tab.webView
+    func makeNSView(context: Context) -> TabContainerView {
+        let container = TabContainerView()
+        container.update(tab: tab, coordinator: context.coordinator)
+        return container
     }
 
-    func updateNSView(_ nsView: WKWebView, context: Context) {
+    func updateNSView(_ nsView: TabContainerView, context: Context) {
         context.coordinator.tab = tab
+        nsView.update(tab: tab, coordinator: context.coordinator)
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
@@ -35,6 +37,8 @@ struct WebView: NSViewRepresentable {
 
         func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
             DispatchQueue.main.async {
+                self.tab.snapshotImage = nil
+                self.tab.lastActiveTime = Date()
                 self.tab.currentURL = webView.url
                 if let title = webView.title, !title.isEmpty {
                     self.tab.pageTitle = title
@@ -47,15 +51,14 @@ struct WebView: NSViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             let durationMs = Int((CFAbsoluteTimeGetCurrent() - self.navigationStartTime) * 1000)
             DispatchQueue.main.async {
+                self.tab.snapshotImage = nil
+                self.tab.lastActiveTime = Date()
                 self.tab.isLoading = false
                 self.tab.currentURL = webView.url
                 self.tab.pageTitle = webView.title ?? webView.url?.host ?? "Untitled"
                 self.tab.canGoBack = webView.canGoBack
                 self.tab.canGoForward = webView.canGoForward
                 PerformanceMonitor.shared.log(event: "LoadFinish", details: "Loaded \"\(self.tab.pageTitle)\" in \(durationMs)ms")
-                if let url = webView.url?.absoluteString {
-                    HistoryManager.shared.addEntry(url: url, title: self.tab.pageTitle)
-                }
             }
             fetchFavicon(for: webView)
         }
@@ -95,3 +98,40 @@ struct WebView: NSViewRepresentable {
         }
     }
 }
+
+final class TabContainerView: NSView {
+    private weak var currentWebView: WKWebView?
+    private var imageView: NSImageView?
+
+    func update(tab: Tab, coordinator: WebView.Coordinator) {
+        if let webView = tab.webView {
+            if currentWebView !== webView {
+                subviews.forEach { $0.removeFromSuperview() }
+                currentWebView = webView
+                imageView = nil
+                webView.navigationDelegate = coordinator
+                webView.autoresizingMask = [.width, .height]
+                webView.frame = bounds
+                addSubview(webView)
+            }
+        } else if let snapshot = tab.snapshotImage {
+            if currentWebView != nil || imageView?.image !== snapshot {
+                subviews.forEach { $0.removeFromSuperview() }
+                currentWebView = nil
+                let iv = NSImageView(frame: bounds)
+                iv.image = snapshot
+                iv.imageScaling = .scaleAxesIndependently
+                iv.autoresizingMask = [.width, .height]
+                addSubview(iv)
+                self.imageView = iv
+            }
+        } else {
+            if !subviews.isEmpty {
+                subviews.forEach { $0.removeFromSuperview() }
+                currentWebView = nil
+                imageView = nil
+            }
+        }
+    }
+}
+

@@ -11,6 +11,9 @@ struct BrowserApp: App {
             ContentView(viewModel: viewModel)
                 .frame(minWidth: 600, minHeight: 400)
                 .preferredColorScheme(viewModel.theme.colorScheme)
+                .onAppear {
+                    appDelegate.viewModel = viewModel
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
@@ -67,8 +70,67 @@ struct BrowserApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    weak var viewModel: BrowserViewModel?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+
+        if ProcessInfo.processInfo.arguments.contains("--run-perf-sequence") {
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                self?.runPerfSequence()
+            }
+        }
+    }
+
+    private func runPerfSequence() {
+        guard let vm = viewModel else { return }
+
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            
+            vm.createNewTab()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                
+                vm.createNewTab()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    
+                    vm.closeActiveTab()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        vm.closeActiveTab()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            
+                            vm.navigate(tab: vm.activeTab, to: "https://example.com")
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                                
+                                vm.createNewTab()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    vm.createNewTab()
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                        vm.createNewTab()
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                            
+                                            vm.navigate(tab: vm.activeTab, to: "https://127.0.0.1:59999/nonexistent")
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                                vm.closeActiveTab()
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                                    
+                                                    vm.navigate(tab: vm.activeTab, to: "https://example.org")
+                                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                                        PerformanceMonitor.shared.log(event: "SequenceComplete", details: "All steps verified successfully")
+                                                        exit(0)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

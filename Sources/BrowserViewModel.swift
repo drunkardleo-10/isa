@@ -45,29 +45,48 @@ final class Tab: Identifiable, ObservableObject {
     @Published var isAddressOverlayPresented: Bool = false
     @Published var favicon: NSImage? = nil
 
-    let webView: WKWebView
+    @Published var webView: WKWebView? = nil
+    @Published var snapshotImage: NSImage? = nil
+    @Published var isSleeping: Bool = false
+    @Published var isSnapshotting: Bool = false
+    var lastActiveTime: Date = Date()
 
     var isNewTabState: Bool {
         currentURL == nil
     }
 
-    init(url: URL? = nil) {
+    @discardableResult
+    func ensureWebView(caller: String = #function) -> WKWebView {
+        if let existing = webView {
+            return existing
+        }
+        PerformanceMonitor.shared.log(event: "WebKitInit", details: "Instantiating WKWebView for tab \(id.uuidString.prefix(6)) from [\(caller)]")
         let configuration = WKWebViewConfiguration()
+        configuration.processPool = BrowserViewModel.sharedProcessPool
         let preferences = WKWebpagePreferences()
         preferences.preferredContentMode = .desktop
         configuration.defaultWebpagePreferences = preferences
         configuration.applicationNameForUserAgent = "Version/18.0 Safari/605.1.15"
-        self.webView = WKWebView(frame: .zero, configuration: configuration)
-        self.webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
+        let newWebView = WKWebView(frame: .zero, configuration: configuration)
+        newWebView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
+        self.webView = newWebView
+        return newWebView
+    }
+
+    init(url: URL? = nil) {
+        PerformanceMonitor.shared.log(event: "TabInit", details: "Tab \(id.uuidString.prefix(6)) initialized (url: \(url?.absoluteString ?? "nil")) | webView is \(url != nil ? "eager" : "NIL")")
         if let url = url {
             self.addressText = url.absoluteString
             self.currentURL = url
-            self.webView.load(URLRequest(url: url))
+            let wv = ensureWebView(caller: "Tab.init(url:)")
+            wv.load(URLRequest(url: url))
         }
     }
 }
 
 final class BrowserViewModel: ObservableObject {
+    static let sharedProcessPool = WKProcessPool()
+
     @Published var tabs: [Tab] = []
     @Published var selectedTabId: UUID = UUID()
     @Published var theme: AppTheme = {
@@ -83,6 +102,9 @@ final class BrowserViewModel: ObservableObject {
     }
 
     private var tabCancellables = Set<AnyCancellable>()
+    private var sleepMaintenanceTimer: Timer?
+    private let sleepTimeoutInterval: TimeInterval = 600 
+    private let tabThresholdForSleep: Int = 6 
 
     var activeTab: Tab {
         if let tab = tabs.first(where: { $0.id == selectedTabId }) {
@@ -108,6 +130,10 @@ final class BrowserViewModel: ObservableObject {
             self?.tabs.count ?? 0
         }
         PerformanceMonitor.shared.log(event: "Launch", details: "Initial tab created (theme: \(theme.rawValue))")
+
+        sleepMaintenanceTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
+            self?.checkTabSleeping()
+        }
     }
 
     private func bindTabs() {
@@ -122,13 +148,14 @@ final class BrowserViewModel: ObservableObject {
     }
 
     func applyAppAppearance() {
+        guard let app = NSApp else { return }
         switch theme {
         case .system:
-            NSApp.appearance = nil
+            app.appearance = nil
         case .light:
-            NSApp.appearance = NSAppearance(named: .aqua)
+            app.appearance = NSAppearance(named: .aqua)
         case .dark:
-            NSApp.appearance = NSAppearance(named: .darkAqua)
+            app.appearance = NSAppearance(named: .darkAqua)
         }
     }
 
@@ -139,6 +166,9 @@ final class BrowserViewModel: ObservableObject {
     }
 
     func createNewTab(select: Bool = true) {
+        if select {
+            activeTab.lastActiveTime = Date()
+        }
         let newTab = Tab()
         withAnimation(.easeOut(duration: 0.2)) {
             tabs.append(newTab)
@@ -147,12 +177,17 @@ final class BrowserViewModel: ObservableObject {
             }
         }
         bindTabs()
-        PerformanceMonitor.shared.log(event: "Tab", details: "Created new tab \(newTab.id.uuidString.prefix(6)) (Total: \(tabs.count))")
+        PerformanceMonitor.shared.log(event: "Tab", details: "Created new tab \(newTab.id.uuidString.prefix(6)) (Total: \(tabs.count)) | webView: \(newTab.webView != nil ? "INSTANTIATED" : "nil")")
+        checkTabSleeping()
     }
 
     func selectTab(id: UUID) {
-        if tabs.contains(where: { $0.id == id }) {
+        guard let targetTab = tabs.first(where: { $0.id == id }) else { return }
+        if targetTab.id != selectedTabId {
+            activeTab.lastActiveTime = Date()
             selectedTabId = id
+            wakeTabIfNeeded(targetTab)
+            checkTabSleeping()
             let title = activeTab.pageTitle.isEmpty ? (activeTab.currentURL?.host ?? "New Tab") : activeTab.pageTitle
             PerformanceMonitor.shared.log(event: "Tab", details: "Selected tab \"\(title)\"")
         }
@@ -161,11 +196,11 @@ final class BrowserViewModel: ObservableObject {
     func selectTabNumber(_ number: Int) {
         guard !tabs.isEmpty else { return }
         if number == 9 && tabs.count < 9 {
-            selectedTabId = tabs[tabs.count - 1].id
+            selectTab(id: tabs[tabs.count - 1].id)
         } else {
             let index = number - 1
             if tabs.indices.contains(index) {
-                selectedTabId = tabs[index].id
+                selectTab(id: tabs[index].id)
             }
         }
     }
@@ -188,6 +223,7 @@ final class BrowserViewModel: ObservableObject {
             if selectedTabId == id {
                 let nextIndex = index < tabs.count - 1 ? index + 1 : index - 1
                 selectedTabId = tabs[nextIndex].id
+                wakeTabIfNeeded(activeTab)
             }
             _ = tabs.remove(at: index)
         }
@@ -245,34 +281,133 @@ final class BrowserViewModel: ObservableObject {
         return URL(string: "https://www.google.com/search?q=\(encoded)")
     }
 
+    func isDirectURL(_ input: String) -> Bool {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if trimmed.lowercased().hasPrefix("http://") || trimmed.lowercased().hasPrefix("https://") {
+            return true
+        }
+        let domainPattern = "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$"
+        if trimmed.range(of: domainPattern, options: .regularExpression) != nil {
+            return true
+        }
+        if trimmed.hasPrefix("localhost:") || trimmed == "localhost" {
+            return true
+        }
+        return false
+    }
+
     func navigate(tab: Tab, to input: String) {
         guard let url = resolveURL(from: input) else { return }
         PerformanceMonitor.shared.log(event: "Navigation", details: "Navigating to \(url.absoluteString)")
+        tab.lastActiveTime = Date()
+        tab.isSleeping = false
+        let webView = tab.ensureWebView()
         withAnimation(.easeOut(duration: 0.2)) {
             tab.currentURL = url
             tab.addressText = url.absoluteString
             tab.isAddressOverlayPresented = false
             tab.favicon = nil
         }
-        tab.webView.load(URLRequest(url: url))
+        webView.load(URLRequest(url: url))
     }
 
     func reloadActiveTab() {
+        guard let webView = activeTab.webView else { return }
         PerformanceMonitor.shared.log(event: "Navigation", details: "Reloading active tab")
-        activeTab.webView.reload()
+        activeTab.lastActiveTime = Date()
+        webView.reload()
     }
 
     func goBackActiveTab() {
-        if activeTab.webView.canGoBack {
-            PerformanceMonitor.shared.log(event: "Navigation", details: "Navigating back")
-            activeTab.webView.goBack()
-        }
+        guard let webView = activeTab.webView, webView.canGoBack else { return }
+        PerformanceMonitor.shared.log(event: "Navigation", details: "Navigating back")
+        activeTab.lastActiveTime = Date()
+        webView.goBack()
     }
 
     func goForwardActiveTab() {
-        if activeTab.webView.canGoForward {
-            PerformanceMonitor.shared.log(event: "Navigation", details: "Navigating forward")
-            activeTab.webView.goForward()
+        guard let webView = activeTab.webView, webView.canGoForward else { return }
+        PerformanceMonitor.shared.log(event: "Navigation", details: "Navigating forward")
+        activeTab.lastActiveTime = Date()
+        webView.goForward()
+    }
+
+    
+
+    
+    
+    
+    func sleepTab(_ tab: Tab) {
+        guard tab.id != selectedTabId,
+              !tab.isSleeping,
+              !tab.isSnapshotting,
+              let webView = tab.webView,
+              !tab.isLoading,
+              tab.currentURL != nil else {
+            return
+        }
+
+        tab.isSnapshotting = true
+        webView.takeSnapshot(with: nil) { [weak self, weak tab] image, error in
+            DispatchQueue.main.async {
+                guard let self = self, let tab = tab else { return }
+                tab.isSnapshotting = false
+
+                
+                guard tab.id != self.selectedTabId else { return }
+
+                tab.snapshotImage = image
+                tab.isSleeping = true
+                
+                tab.webView = nil
+                let title = tab.pageTitle.isEmpty ? (tab.currentURL?.host ?? "Tab") : tab.pageTitle
+                PerformanceMonitor.shared.log(event: "Sleep", details: "Tab \"\(title)\" put to sleep")
+            }
+        }
+    }
+
+    func wakeTabIfNeeded(_ tab: Tab) {
+        tab.lastActiveTime = Date()
+        guard tab.isSleeping else { return }
+
+        let title = tab.pageTitle.isEmpty ? (tab.currentURL?.host ?? "Tab") : tab.pageTitle
+        PerformanceMonitor.shared.log(event: "Wake", details: "Waking tab \"\(title)\"")
+        tab.isSleeping = false
+        let webView = tab.ensureWebView()
+        if let url = tab.currentURL {
+            webView.load(URLRequest(url: url))
+        }
+    }
+
+    func checkTabSleeping() {
+        let now = Date()
+        let backgroundTabs = tabs.filter {
+            $0.id != selectedTabId &&
+            $0.webView != nil &&
+            !$0.isSleeping &&
+            !$0.isSnapshotting &&
+            !$0.isLoading &&
+            $0.currentURL != nil
+        }
+
+        
+        for tab in backgroundTabs {
+            if now.timeIntervalSince(tab.lastActiveTime) >= sleepTimeoutInterval {
+                sleepTab(tab)
+            }
+        }
+
+        
+        if tabs.count >= tabThresholdForSleep {
+            let eligible = backgroundTabs
+                .sorted { $0.lastActiveTime < $1.lastActiveTime }
+            for tab in eligible {
+                let activeLiveCount = tabs.filter { $0.webView != nil }.count
+                if activeLiveCount >= tabThresholdForSleep {
+                    sleepTab(tab)
+                }
+            }
         }
     }
 }
