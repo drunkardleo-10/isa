@@ -1,7 +1,9 @@
 import SwiftUI
+import AppKit
 
 @main
 struct BrowserApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var viewModel = BrowserViewModel()
 
     var body: some Scene {
@@ -61,5 +63,12 @@ struct BrowserApp: App {
                 .disabled(!viewModel.activeTab.canGoForward)
             }
         }
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }

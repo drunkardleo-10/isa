@@ -2,6 +2,7 @@ import Foundation
 import WebKit
 import Combine
 import SwiftUI
+import AppKit
 
 enum AppTheme: String, CaseIterable {
     case system = "system"
@@ -42,6 +43,7 @@ final class Tab: Identifiable, ObservableObject {
     @Published var canGoBack: Bool = false
     @Published var canGoForward: Bool = false
     @Published var isAddressOverlayPresented: Bool = false
+    @Published var favicon: NSImage? = nil
 
     let webView: WKWebView
 
@@ -51,7 +53,12 @@ final class Tab: Identifiable, ObservableObject {
 
     init(url: URL? = nil) {
         let configuration = WKWebViewConfiguration()
+        let preferences = WKWebpagePreferences()
+        preferences.preferredContentMode = .desktop
+        configuration.defaultWebpagePreferences = preferences
+        configuration.applicationNameForUserAgent = "Version/18.0 Safari/605.1.15"
         self.webView = WKWebView(frame: .zero, configuration: configuration)
+        self.webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
         if let url = url {
             self.addressText = url.absoluteString
             self.currentURL = url
@@ -96,6 +103,11 @@ final class BrowserViewModel: ObservableObject {
         self.tabs = [initialTab]
         self.selectedTabId = initialTab.id
         bindTabs()
+        applyAppAppearance()
+        PerformanceMonitor.shared.startPeriodicLogging { [weak self] in
+            self?.tabs.count ?? 0
+        }
+        PerformanceMonitor.shared.log(event: "Launch", details: "Initial tab created (theme: \(theme.rawValue))")
     }
 
     private func bindTabs() {
@@ -109,8 +121,21 @@ final class BrowserViewModel: ObservableObject {
         }
     }
 
+    func applyAppAppearance() {
+        switch theme {
+        case .system:
+            NSApp.appearance = nil
+        case .light:
+            NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark:
+            NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+    }
+
     func toggleTheme() {
         theme = theme.next
+        applyAppAppearance()
+        PerformanceMonitor.shared.log(event: "Theme", details: "Switched to \(theme.rawValue)")
     }
 
     func createNewTab(select: Bool = true) {
@@ -122,11 +147,14 @@ final class BrowserViewModel: ObservableObject {
             }
         }
         bindTabs()
+        PerformanceMonitor.shared.log(event: "Tab", details: "Created new tab \(newTab.id.uuidString.prefix(6)) (Total: \(tabs.count))")
     }
 
     func selectTab(id: UUID) {
         if tabs.contains(where: { $0.id == id }) {
             selectedTabId = id
+            let title = activeTab.pageTitle.isEmpty ? (activeTab.currentURL?.host ?? "New Tab") : activeTab.pageTitle
+            PerformanceMonitor.shared.log(event: "Tab", details: "Selected tab \"\(title)\"")
         }
     }
 
@@ -147,23 +175,24 @@ final class BrowserViewModel: ObservableObject {
 
         if tabs.count == 1 {
             let freshTab = Tab()
-            withAnimation(.easeOut(duration: 0.2)) {
+            withAnimation(.easeInOut(duration: 0.2)) {
                 tabs = [freshTab]
                 selectedTabId = freshTab.id
             }
             bindTabs()
+            PerformanceMonitor.shared.log(event: "Tab", details: "Closed last tab, reset to fresh tab")
             return
         }
 
-        if selectedTabId == id {
-            let nextIndex = index < tabs.count - 1 ? index + 1 : index - 1
-            selectedTabId = tabs[nextIndex].id
-        }
-
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            if selectedTabId == id {
+                let nextIndex = index < tabs.count - 1 ? index + 1 : index - 1
+                selectedTabId = tabs[nextIndex].id
+            }
             _ = tabs.remove(at: index)
         }
         bindTabs()
+        PerformanceMonitor.shared.log(event: "Tab", details: "Closed tab at index [\(index)] (Remaining: \(tabs.count))")
     }
 
     func closeActiveTab() {
@@ -177,6 +206,7 @@ final class BrowserViewModel: ObservableObject {
         let tab = tabs.remove(at: sourceIndex)
         tabs.insert(tab, at: destinationIndex)
         bindTabs()
+        PerformanceMonitor.shared.log(event: "Tab", details: "Dragged tab from [\(sourceIndex)] to [\(destinationIndex)]")
     }
 
     func focusAddressBar() {
@@ -217,26 +247,31 @@ final class BrowserViewModel: ObservableObject {
 
     func navigate(tab: Tab, to input: String) {
         guard let url = resolveURL(from: input) else { return }
+        PerformanceMonitor.shared.log(event: "Navigation", details: "Navigating to \(url.absoluteString)")
         withAnimation(.easeOut(duration: 0.2)) {
             tab.currentURL = url
             tab.addressText = url.absoluteString
             tab.isAddressOverlayPresented = false
+            tab.favicon = nil
         }
         tab.webView.load(URLRequest(url: url))
     }
 
     func reloadActiveTab() {
+        PerformanceMonitor.shared.log(event: "Navigation", details: "Reloading active tab")
         activeTab.webView.reload()
     }
 
     func goBackActiveTab() {
         if activeTab.webView.canGoBack {
+            PerformanceMonitor.shared.log(event: "Navigation", details: "Navigating back")
             activeTab.webView.goBack()
         }
     }
 
     func goForwardActiveTab() {
         if activeTab.webView.canGoForward {
+            PerformanceMonitor.shared.log(event: "Navigation", details: "Navigating forward")
             activeTab.webView.goForward()
         }
     }
