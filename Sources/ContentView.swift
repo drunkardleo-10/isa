@@ -317,10 +317,20 @@ struct ActiveTabOverlayView: View {
                                 .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
                         )
                         .shadow(color: Color.black.opacity(0.08), radius: 16, x: 0, y: 8)
+                        .transition(
+                            .asymmetric(
+                                insertion: .opacity
+                                    .combined(with: .offset(y: -4))
+                                    .combined(with: .scale(scale: 0.99, anchor: .top)),
+                                removal: .opacity
+                                    .combined(with: .scale(scale: 0.99, anchor: .top))
+                            )
+                        )
                     }
 
                     Spacer()
                 }
+                .animation(.spring(response: 0.18, dampingFraction: 0.86), value: suggestions.map { $0.id })
             }
             .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .center)))
             .onAppear {
@@ -332,12 +342,16 @@ struct ActiveTabOverlayView: View {
                     if tab.isNewTabState || tab.isAddressOverlayPresented {
                         if event.keyCode == 125 {
                             if !suggestions.isEmpty {
-                                selectedSuggestionIndex = min(suggestions.count - 1, selectedSuggestionIndex + 1)
+                                withAnimation(.easeInOut(duration: 0.08)) {
+                                    selectedSuggestionIndex = min(suggestions.count - 1, selectedSuggestionIndex + 1)
+                                }
                                 return nil
                             }
                         } else if event.keyCode == 126 {
                             if !suggestions.isEmpty {
-                                selectedSuggestionIndex = max(-1, selectedSuggestionIndex - 1)
+                                withAnimation(.easeInOut(duration: 0.08)) {
+                                    selectedSuggestionIndex = max(-1, selectedSuggestionIndex - 1)
+                                }
                                 return nil
                             }
                         }
@@ -361,13 +375,20 @@ struct ActiveTabOverlayView: View {
             .onChange(of: addressInput) { _, newValue in
                 let text = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 if text.isEmpty {
-                    suggestions = []
-                    selectedSuggestionIndex = -1
+                    withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
+                        suggestions = []
+                        selectedSuggestionIndex = -1
+                    }
                 } else {
-                    suggestions = HistoryManager.shared.localSuggestions(for: text)
+                    let local = HistoryManager.shared.localSuggestions(for: text)
+                    withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
+                        suggestions = local
+                    }
                     HistoryManager.shared.fetchSuggestions(for: text) { remoteItems in
                         if addressInput.trimmingCharacters(in: .whitespacesAndNewlines) == text {
-                            suggestions = remoteItems
+                            withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
+                                suggestions = remoteItems
+                            }
                         }
                     }
                 }
@@ -395,13 +416,17 @@ struct ActiveTabOverlayView: View {
         } else {
             addressInput = tab.addressText
         }
-        suggestions = []
-        selectedSuggestionIndex = -1
+        withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
+            suggestions = []
+            selectedSuggestionIndex = -1
+        }
     }
 
     private func navigateWithSuggestion(_ item: SuggestionItem) {
-        suggestions = []
-        selectedSuggestionIndex = -1
+        withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
+            suggestions = []
+            selectedSuggestionIndex = -1
+        }
         HistoryManager.shared.recordSearch(query: item.query)
         viewModel.navigate(tab: tab, to: item.fullURL)
     }
@@ -409,8 +434,10 @@ struct ActiveTabOverlayView: View {
     private func submitNavigation() {
         let text = addressInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        suggestions = []
-        selectedSuggestionIndex = -1
+        withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
+            suggestions = []
+            selectedSuggestionIndex = -1
+        }
         if !viewModel.isDirectURL(text) {
             HistoryManager.shared.recordSearch(query: text)
         }
@@ -460,6 +487,8 @@ struct SuggestionRowView: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 4)
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
+        .animation(.easeInOut(duration: 0.15), value: isHovered)
         .onHover { hovering in
             isHovered = hovering
         }
