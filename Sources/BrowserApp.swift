@@ -32,6 +32,18 @@ struct BrowserApp: App {
             }
 
             CommandMenu("Tab") {
+                Button("Run 25 Tab Benchmark") {
+                    appDelegate.runPerfSequence()
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+
+                Button("Open 25 Sample Tabs") {
+                    viewModel.openSampleTabs(count: 25)
+                }
+                .keyboardShortcut("u", modifiers: [.command, .shift])
+
+                Divider()
+
                 ForEach(1...9, id: \.self) { num in
                     Button("Select Tab \(num)") {
                         viewModel.selectTabNumber(num)
@@ -76,59 +88,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
 
-        if ProcessInfo.processInfo.arguments.contains("--run-perf-sequence") {
-            
+        if ProcessInfo.processInfo.arguments.contains("--run-perf-sequence") ||
+           ProcessInfo.processInfo.arguments.contains("--open-tabs") ||
+           ProcessInfo.processInfo.arguments.contains("--benchmark") ||
+           ProcessInfo.processInfo.environment["ISA_BENCHMARK"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
                 self?.runPerfSequence()
             }
         }
     }
 
-    private func runPerfSequence() {
+    func runPerfSequence() {
         guard let vm = viewModel else { return }
-
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            
-            vm.createNewTab()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                
-                vm.createNewTab()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    
-                    vm.closeActiveTab()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        vm.closeActiveTab()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                            
-                            vm.navigate(tab: vm.activeTab, to: "https://example.com")
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                                
-                                vm.createNewTab()
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    vm.createNewTab()
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        vm.createNewTab()
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                            
-                                            vm.navigate(tab: vm.activeTab, to: "https://127.0.0.1:59999/nonexistent")
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                                vm.closeActiveTab()
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                                                    
-                                                    vm.navigate(tab: vm.activeTab, to: "https://example.org")
-                                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                                        PerformanceMonitor.shared.log(event: "SequenceComplete", details: "All steps verified successfully")
-                                                        exit(0)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+        vm.openSampleTabs(count: 25, delayPerTab: 3.0) {
+            if ProcessInfo.processInfo.arguments.contains("--exit-on-finish") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    exit(0)
                 }
             }
         }

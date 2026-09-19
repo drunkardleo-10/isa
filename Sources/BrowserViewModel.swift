@@ -73,13 +73,18 @@ final class Tab: Identifiable, ObservableObject {
         return newWebView
     }
 
-    init(url: URL? = nil) {
-        PerformanceMonitor.shared.log(event: "TabInit", details: "Tab \(id.uuidString.prefix(6)) initialized (url: \(url?.absoluteString ?? "nil")) | webView is \(url != nil ? "eager" : "NIL")")
+    init(url: URL? = nil, lazy: Bool = false) {
+        PerformanceMonitor.shared.log(event: "TabInit", details: "Tab \(id.uuidString.prefix(6)) initialized (url: \(url?.absoluteString ?? "nil")) | webView is \(url != nil && !lazy ? "eager" : "NIL")")
         if let url = url {
             self.addressText = url.absoluteString
             self.currentURL = url
-            let wv = ensureWebView(caller: "Tab.init(url:)")
-            wv.load(URLRequest(url: url))
+            self.pageTitle = url.host ?? ""
+            if !lazy {
+                let wv = ensureWebView(caller: "Tab.init(url:)")
+                wv.load(URLRequest(url: url))
+            } else {
+                self.isSleeping = true
+            }
         }
     }
 }
@@ -100,7 +105,7 @@ final class BrowserViewModel: ObservableObject {
             UserDefaults.standard.set(theme.rawValue, forKey: "appTheme")
         }
     }
-
+    @Published var isBenchmarkRunning: Bool = false
     private var tabCancellables = Set<AnyCancellable>()
     private var sleepMaintenanceTimer: Timer?
     private let sleepTimeoutInterval: TimeInterval = 600 
@@ -136,7 +141,7 @@ final class BrowserViewModel: ObservableObject {
         }
     }
 
-    private func bindTabs() {
+    func bindTabs() {
         tabCancellables.removeAll()
         for tab in tabs {
             tab.objectWillChange
@@ -241,7 +246,6 @@ final class BrowserViewModel: ObservableObject {
               tabs.indices.contains(destinationIndex) else { return }
         let tab = tabs.remove(at: sourceIndex)
         tabs.insert(tab, at: destinationIndex)
-        bindTabs()
         PerformanceMonitor.shared.log(event: "Tab", details: "Dragged tab from [\(sourceIndex)] to [\(destinationIndex)]")
     }
 
@@ -256,6 +260,92 @@ final class BrowserViewModel: ObservableObject {
         withAnimation(.easeOut(duration: 0.2)) {
             activeTab.isAddressOverlayPresented = false
         }
+    }
+
+    func openSampleTabs(count: Int = 25, delayPerTab: TimeInterval = 3.0, onComplete: (() -> Void)? = nil) {
+        guard !isBenchmarkRunning else { return }
+        isBenchmarkRunning = true
+
+        let websites: [(title: String, url: String)] = [
+            ("Wikipedia", "https://www.wikipedia.org/?utm_source=chatgpt.com"),
+            ("GitHub", "https://github.com/?utm_source=chatgpt.com"),
+            ("YouTube", "https://www.youtube.com/?utm_source=chatgpt.com"),
+            ("Reddit", "https://www.reddit.com/?utm_source=chatgpt.com"),
+            ("Google Maps", "https://maps.google.com/?utm_source=chatgpt.com"),
+            ("Figma", "https://www.figma.com/?utm_source=chatgpt.com"),
+            ("Discord", "https://discord.com/app?utm_source=chatgpt.com"),
+            ("Twitch", "https://www.twitch.tv/?utm_source=chatgpt.com"),
+            ("WebGL Samples", "https://webglsamples.org/?utm_source=chatgpt.com"),
+            ("Three.js Examples", "https://threejs.org/examples/?utm_source=chatgpt.com"),
+            ("Apple", "https://www.apple.com/?utm_source=chatgpt.com"),
+            ("Hacker News", "https://news.ycombinator.com/?utm_source=chatgpt.com"),
+            ("MDN Web Docs", "https://developer.mozilla.org/?utm_source=chatgpt.com"),
+            ("Stack Overflow", "https://stackoverflow.com/?utm_source=chatgpt.com"),
+            ("BBC News", "https://www.bbc.com/?utm_source=chatgpt.com"),
+            ("CNN", "https://www.cnn.com/?utm_source=chatgpt.com"),
+            ("Amazon", "https://www.amazon.com/?utm_source=chatgpt.com"),
+            ("X", "https://x.com/?utm_source=chatgpt.com"),
+            ("LinkedIn", "https://www.linkedin.com/?utm_source=chatgpt.com"),
+            ("Spotify", "https://open.spotify.com/?utm_source=chatgpt.com"),
+            ("DuckDuckGo", "https://duckduckgo.com/?utm_source=chatgpt.com"),
+            ("Swift", "https://www.swift.org/?utm_source=chatgpt.com"),
+            ("Vercel", "https://vercel.com/?utm_source=chatgpt.com"),
+            ("Cloudflare", "https://www.cloudflare.com/?utm_source=chatgpt.com"),
+            ("OpenAI", "https://openai.com/?utm_source=chatgpt.com")
+        ]
+
+        let targetSites = Array(websites.prefix(count))
+        var index = 0
+
+        func loadStep() {
+            guard index < targetSites.count else {
+                self.isBenchmarkRunning = false
+                PerformanceMonitor.shared.log(event: "BenchmarkComplete", details: "All \(targetSites.count) benchmark tabs loaded (Total: \(self.tabs.count))")
+                onComplete?()
+                return
+            }
+
+            let item = targetSites[index]
+            PerformanceMonitor.shared.log(event: "BenchmarkStep", details: "[\(index + 1)/\(targetSites.count)] Opening and loading \(item.title) (\(item.url))")
+
+            let targetTab: Tab
+            if index == 0, let first = self.tabs.first, first.isNewTabState {
+                targetTab = first
+            } else {
+                let tab = Tab()
+                withAnimation(.easeOut(duration: 0.2)) {
+                    self.tabs.append(tab)
+                    self.selectedTabId = tab.id
+                }
+                self.bindTabs()
+                targetTab = tab
+            }
+
+            targetTab.pageTitle = item.title
+            self.selectedTabId = targetTab.id
+            self.navigate(tab: targetTab, to: item.url)
+            if let host = URL(string: item.url)?.host {
+                self.loadFavicon(for: targetTab, host: host)
+            }
+
+            index += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + delayPerTab) { [weak self] in
+                guard self != nil else { return }
+                loadStep()
+            }
+        }
+
+        loadStep()
+    }
+
+    func loadFavicon(for tab: Tab, host: String) {
+        guard let iconURL = URL(string: "https://www.google.com/s2/favicons?domain=\(host)&sz=64") else { return }
+        URLSession.shared.dataTask(with: iconURL) { [weak tab] data, _, _ in
+            guard let data = data, let image = NSImage(data: data) else { return }
+            DispatchQueue.main.async {
+                tab?.favicon = image
+            }
+        }.resume()
     }
 
     func resolveURL(from input: String) -> URL? {
@@ -381,6 +471,7 @@ final class BrowserViewModel: ObservableObject {
     }
 
     func checkTabSleeping() {
+        if isBenchmarkRunning { return }
         let now = Date()
         let backgroundTabs = tabs.filter {
             $0.id != selectedTabId &&

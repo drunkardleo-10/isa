@@ -1,26 +1,13 @@
 import SwiftUI
 import AppKit
+import ObjectiveC
 
 struct ContentView: View {
     @ObservedObject var viewModel: BrowserViewModel
-    @Namespace private var tabNamespace
-
-    private var computedTabWidth: CGFloat {
-        let count = viewModel.tabs.count
-        if count <= 2 { return 160 }
-        if count <= 4 { return 135 }
-        if count <= 7 { return 110 }
-        if count <= 10 { return 85 }
-        return 65
-    }
-
-    private var totalTabsContentWidth: CGFloat {
-        let count = CGFloat(viewModel.tabs.count)
-        let tabWidth = computedTabWidth
-        let spacing: CGFloat = 4
-        let plusButtonWidth: CGFloat = 26
-        return (count * tabWidth) + (count * spacing) + plusButtonWidth + 12
-    }
+    @State private var draggingTabId: UUID? = nil
+    @State private var dragOffset: CGFloat = 0
+    @State private var dragInitialIndex: Int? = nil
+    @State private var dragTargetIndex: Int? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -68,56 +55,9 @@ struct ContentView: View {
     private var topBar: some View {
         HStack(alignment: .center, spacing: 6) {
             WindowDragHandle()
-                .frame(width: 80, height: 32)
+                .frame(width: 78, height: 32)
 
-            ScrollViewReader { scrollProxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .center, spacing: 4) {
-                        ForEach(viewModel.tabs) { tab in
-                            TabPillView(
-                                tab: tab,
-                                viewModel: viewModel,
-                                isSelected: tab.id == viewModel.selectedTabId,
-                                tabNamespace: tabNamespace,
-                                tabWidth: computedTabWidth
-                            )
-                            .id(tab.id)
-                            .transition(.asymmetric(
-                                insertion: .scale(scale: 0.85).combined(with: .opacity),
-                                removal: .scale(scale: 0.85).combined(with: .opacity)
-                            ))
-                        }
-
-                        Button(action: {
-                            PerformanceMonitor.shared.log(event: "Click", details: "New Tab (+) button")
-                            viewModel.createNewTab()
-                        }) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(.secondary)
-                                .frame(width: 22, height: 22)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .fill(Color.primary.opacity(0.05))
-                                )
-                                .contentShape(RoundedRectangle(cornerRadius: 6))
-                        }
-                        .buttonStyle(.plain)
-                        .help("New Tab (⌘T)")
-                    }
-                    .padding(.trailing, 4)
-                    .animation(.easeInOut(duration: 0.2), value: viewModel.tabs.map { $0.id })
-                }
-                .frame(maxWidth: totalTabsContentWidth)
-                .onChange(of: viewModel.selectedTabId) { _, newId in
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        scrollProxy.scrollTo(newId, anchor: .center)
-                    }
-                }
-            }
-
-            WindowDragHandle()
-                .frame(maxWidth: .infinity, maxHeight: 32)
+            tabStripView
 
             Button(action: {
                 PerformanceMonitor.shared.log(event: "Click", details: "Theme toggle button (Current: \(viewModel.theme.rawValue))")
@@ -135,6 +75,202 @@ struct ContentView: View {
         .frame(height: 32)
         .padding(.trailing, 12)
         .background(Color(nsColor: .windowBackgroundColor))
+        .background(NonDraggableBackground())
+    }
+
+    private var tabStripView: some View {
+        GeometryReader { geometry in
+            let availableWidth = geometry.size.width
+            let tabCount = viewModel.tabs.count
+            let spacing: CGFloat = tabCount > 60 ? 1 : (tabCount > 25 ? 1.5 : (tabCount > 12 ? 2 : 4))
+            let plusButtonWidth: CGFloat = 22
+            let maxTabWidth: CGFloat = 180
+            let minTabWidth: CGFloat = 6
+            let totalSpacing = CGFloat(max(0, tabCount - 1)) * spacing
+            let availableForTabs = max(0, availableWidth - plusButtonWidth - totalSpacing - 4)
+            let calculatedTabWidth = tabCount > 0 ? (availableForTabs / CGFloat(tabCount)) : maxTabWidth
+            let tabWidth = min(maxTabWidth, max(minTabWidth, calculatedTabWidth))
+            let totalContentWidth = (CGFloat(tabCount) * tabWidth) + totalSpacing + plusButtonWidth + 4
+            let isOverflowing = totalContentWidth > availableWidth
+
+            HStack(spacing: 0) {
+                ScrollViewReader { scrollProxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .center, spacing: spacing) {
+                            ForEach(Array(viewModel.tabs.enumerated()), id: \.element.id) { index, tab in
+                                let offset = tabOffset(for: tab, index: index, tabWidth: tabWidth, spacing: spacing)
+                                TabPillView(
+                                    tab: tab,
+                                    viewModel: viewModel,
+                                    isSelected: tab.id == viewModel.selectedTabId,
+                                    tabWidth: tabWidth,
+                                    isBeingDragged: draggingTabId == tab.id,
+                                    onDragStarted: {
+                                        handleTabDragStarted(tab: tab)
+                                    },
+                                    onDragChanged: { translationX in
+                                        handleTabDragChanged(tab: tab, translationX: translationX, tabWidth: tabWidth, spacing: spacing)
+                                    },
+                                    onDragEnded: {
+                                        handleTabDragEnded()
+                                    },
+                                    onSelect: {
+                                        if tab.id == viewModel.selectedTabId && !tab.isNewTabState {
+                                            viewModel.focusAddressBar()
+                                        } else {
+                                            viewModel.selectTab(id: tab.id)
+                                        }
+                                    }
+                                )
+                                .id(tab.id)
+                                .offset(x: offset)
+                                .zIndex(draggingTabId == tab.id ? 10 : 1)
+                                .animation(draggingTabId == tab.id ? nil : .spring(response: 0.22, dampingFraction: 0.85), value: offset)
+                                .transition(.asymmetric(
+                                    insertion: .scale(scale: 0.85).combined(with: .opacity),
+                                    removal: .scale(scale: 0.85).combined(with: .opacity)
+                                ))
+                            }
+
+                            Button(action: {
+                                PerformanceMonitor.shared.log(event: "Click", details: "New Tab (+) button")
+                                viewModel.createNewTab()
+                            }) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 20, height: 20)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 5)
+                                            .fill(Color.primary.opacity(0.05))
+                                    )
+                                    .contentShape(RoundedRectangle(cornerRadius: 5))
+                            }
+                            .buttonStyle(.plain)
+                            .help("New Tab (⌘T)")
+                        }
+                        .padding(.trailing, 2)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.82), value: viewModel.tabs.count)
+                    }
+                    .clipped()
+                    .background(NonDraggableBackground())
+                    .frame(width: isOverflowing ? availableWidth : min(totalContentWidth, availableWidth), alignment: .leading)
+                    .onChange(of: viewModel.selectedTabId) { _, newId in
+                        if draggingTabId == nil {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                scrollProxy.scrollTo(newId, anchor: .center)
+                            }
+                        }
+                    }
+                    .onChange(of: viewModel.tabs.count) { _, _ in
+                        if let lastTab = viewModel.tabs.last, viewModel.selectedTabId == lastTab.id {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                scrollProxy.scrollTo(lastTab.id, anchor: .trailing)
+                            }
+                        }
+                    }
+                    .onChange(of: viewModel.tabs.map { $0.id }) { _, ids in
+                        if let dragging = draggingTabId, !ids.contains(dragging) {
+                            draggingTabId = nil
+                            dragInitialIndex = nil
+                            dragTargetIndex = nil
+                            dragOffset = 0
+                        }
+                    }
+                }
+
+                if !isOverflowing {
+                    NonDraggableBackground()
+                        .frame(maxWidth: .infinity, maxHeight: 32)
+                }
+            }
+            .frame(width: availableWidth, height: 32, alignment: .leading)
+            .clipped()
+        }
+        .frame(maxWidth: .infinity, maxHeight: 32)
+        .clipped()
+    }
+
+    private func handleTabDragStarted(tab: Tab) {
+        guard let index = viewModel.tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        NSApp.keyWindow?.isMovable = false
+        draggingTabId = tab.id
+        dragInitialIndex = index
+        dragTargetIndex = index
+        dragOffset = 0
+    }
+
+    private func handleTabDragChanged(tab: Tab, translationX: CGFloat, tabWidth: CGFloat, spacing: CGFloat) {
+        guard draggingTabId == tab.id, let initialIndex = dragInitialIndex else { return }
+        dragOffset = translationX
+        let pitch = tabWidth + spacing
+        guard pitch > 0 else { return }
+        let shift = Int(round(translationX / pitch))
+        let newTarget = max(0, min(viewModel.tabs.count - 1, initialIndex + shift))
+        if newTarget != dragTargetIndex {
+            dragTargetIndex = newTarget
+        }
+    }
+
+    private func handleTabDragEnded() {
+        NSApp.keyWindow?.isMovable = true
+        guard let draggedId = draggingTabId,
+              let initial = dragInitialIndex,
+              let target = dragTargetIndex else {
+            draggingTabId = nil
+            dragInitialIndex = nil
+            dragTargetIndex = nil
+            dragOffset = 0
+            return
+        }
+
+        if initial != target {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                viewModel.moveTab(from: initial, to: target)
+                draggingTabId = nil
+                dragInitialIndex = nil
+                dragTargetIndex = nil
+                dragOffset = 0
+            }
+        } else {
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                dragOffset = 0
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                if self.draggingTabId == draggedId {
+                    self.draggingTabId = nil
+                    self.dragInitialIndex = nil
+                    self.dragTargetIndex = nil
+                    self.dragOffset = 0
+                }
+            }
+        }
+
+        if viewModel.selectedTabId != draggedId {
+            viewModel.selectTab(id: draggedId)
+        }
+    }
+
+    private func tabOffset(for tab: Tab, index: Int, tabWidth: CGFloat, spacing: CGFloat) -> CGFloat {
+        if tab.id == draggingTabId {
+            return dragOffset
+        }
+        guard let initial = dragInitialIndex, let target = dragTargetIndex, initial != target else {
+            return 0
+        }
+        let pitch = tabWidth + spacing
+        if initial < target {
+            if index > initial && index <= target {
+                return -pitch
+            }
+        } else if initial > target {
+            if index >= target && index < initial {
+                return pitch
+            }
+        }
+        return 0
     }
 }
 
@@ -159,6 +295,8 @@ struct WindowAccessor: NSViewRepresentable {
         guard let window = view.window else { return }
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = false
+        disableWindowDrag(in: window)
         window.makeKeyAndOrderFront(nil)
         switch theme {
         case .system:
@@ -167,6 +305,30 @@ struct WindowAccessor: NSViewRepresentable {
             window.appearance = NSAppearance(named: .aqua)
         case .dark:
             window.appearance = NSAppearance(named: .darkAqua)
+        }
+    }
+
+    private func disableWindowDrag(in window: NSWindow) {
+        let block: @convention(block) (AnyObject) -> Bool = { _ in false }
+        let imp = imp_implementationWithBlock(block)
+        let sel = #selector(getter: NSView.mouseDownCanMoveWindow)
+        if let contentView = window.contentView,
+           let method = class_getInstanceMethod(type(of: contentView), sel) {
+            method_setImplementation(method, imp)
+        }
+        if let frameView = window.contentView?.superview {
+            disableWindowDragRecursively(in: frameView, sel: sel, imp: imp)
+        }
+    }
+
+    private func disableWindowDragRecursively(in view: NSView, sel: Selector, imp: IMP) {
+        if String(describing: type(of: view)).contains("Titlebar") {
+            if let method = class_getInstanceMethod(type(of: view), sel) {
+                method_setImplementation(method, imp)
+            }
+        }
+        for sub in view.subviews {
+            disableWindowDragRecursively(in: sub, sel: sel, imp: imp)
         }
     }
 }
@@ -180,37 +342,138 @@ struct WindowDragHandle: NSViewRepresentable {
 
     final class DragNSView: NSView {
         override func mouseDown(with event: NSEvent) {
-            window?.performDrag(with: event)
+            if event.clickCount == 2 {
+                window?.zoom(nil)
+            } else {
+                guard let window = self.window, window.isMovable else { return }
+                window.performDrag(with: event)
+            }
         }
     }
 }
 
-struct MiddleClickAction: NSViewRepresentable {
-    let action: () -> Void
+struct NonDraggableBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> NonDraggableNSView {
+        NonDraggableNSView()
+    }
 
-    func makeNSView(context: Context) -> MiddleClickView {
-        let view = MiddleClickView()
-        view.action = action
+    func updateNSView(_ nsView: NonDraggableNSView, context: Context) {}
+
+    final class NonDraggableNSView: NSView {
+        override var mouseDownCanMoveWindow: Bool {
+            return false
+        }
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+            return true
+        }
+    }
+}
+
+struct TabPillInteractionView: NSViewRepresentable {
+    let tabWidth: CGFloat
+    let showsCloseButton: Bool
+    let onDragStarted: () -> Void
+    let onDragChanged: (CGFloat) -> Void
+    let onDragEnded: () -> Void
+    let onSelect: () -> Void
+    let onMiddleClick: () -> Void
+
+    func makeNSView(context: Context) -> PillNSView {
+        let view = PillNSView()
+        updateView(view)
         return view
     }
 
-    func updateNSView(_ nsView: MiddleClickView, context: Context) {
-        nsView.action = action
+    func updateNSView(_ nsView: PillNSView, context: Context) {
+        updateView(nsView)
     }
 
-    final class MiddleClickView: NSView {
-        var action: (() -> Void)?
+    private func updateView(_ view: PillNSView) {
+        view.tabWidth = tabWidth
+        view.showsCloseButton = showsCloseButton
+        view.onDragStarted = onDragStarted
+        view.onDragChanged = onDragChanged
+        view.onDragEnded = onDragEnded
+        view.onSelect = onSelect
+        view.onMiddleClick = onMiddleClick
+    }
+
+    final class PillNSView: NSView {
+        var tabWidth: CGFloat = 100
+        var showsCloseButton: Bool = false
+        var onDragStarted: (() -> Void)?
+        var onDragChanged: ((CGFloat) -> Void)?
+        var onDragEnded: (() -> Void)?
+        var onSelect: (() -> Void)?
+        var onMiddleClick: (() -> Void)?
+
+        private var startLocation: NSPoint = .zero
+        private var isDragging: Bool = false
+
+        override var mouseDownCanMoveWindow: Bool {
+            return false
+        }
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+            return true
+        }
+
+        override var intrinsicContentSize: NSSize {
+            return NSSize(width: tabWidth, height: 26)
+        }
 
         override func hitTest(_ point: NSPoint) -> NSView? {
-            guard let event = NSApp.currentEvent, event.type == .otherMouseDown, event.buttonNumber == 2 else {
+            guard let hit = super.hitTest(point) else { return nil }
+            let localPoint = superview != nil ? convert(point, from: superview) : point
+            if showsCloseButton && localPoint.x >= (bounds.width - 22) {
                 return nil
             }
-            return self
+            return hit
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            startLocation = event.locationInWindow
+            isDragging = false
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            let current = event.locationInWindow
+            let deltaX = current.x - startLocation.x
+            let deltaY = current.y - startLocation.y
+            let dist = hypot(deltaX, deltaY)
+
+            if dist >= 3 {
+                if !isDragging {
+                    isDragging = true
+                    window?.isMovable = false
+                    onDragStarted?()
+                }
+                onDragChanged?(deltaX)
+            }
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            window?.isMovable = true
+            if isDragging {
+                isDragging = false
+                onDragEnded?()
+            } else {
+                onSelect?()
+            }
+        }
+
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            if newWindow == nil && isDragging {
+                window?.isMovable = true
+                isDragging = false
+            }
+            super.viewWillMove(toWindow: newWindow)
         }
 
         override func otherMouseDown(with event: NSEvent) {
             if event.buttonNumber == 2 {
-                action?()
+                onMiddleClick?()
             } else {
                 super.otherMouseDown(with: event)
             }
@@ -496,115 +759,138 @@ struct TabPillView: View {
     @ObservedObject var tab: Tab
     @ObservedObject var viewModel: BrowserViewModel
     let isSelected: Bool
-    let tabNamespace: Namespace.ID
     let tabWidth: CGFloat
+    let isBeingDragged: Bool
+    let onDragStarted: () -> Void
+    let onDragChanged: (CGFloat) -> Void
+    let onDragEnded: () -> Void
+    let onSelect: () -> Void
 
     @State private var isHovered: Bool = false
     @State private var isCloseHovered: Bool = false
-    @State private var isDropTargeted: Bool = false
+
+    private var showsTitle: Bool {
+        tabWidth >= 56
+    }
+
+    private var showsCloseButton: Bool {
+        if tabWidth >= 76 {
+            return isHovered || isSelected
+        } else if tabWidth >= 42 {
+            return isHovered
+        }
+        return false
+    }
+
+    private var iconSize: CGFloat {
+        if tabWidth >= 30 {
+            return 14
+        } else if tabWidth >= 20 {
+            return 12
+        } else if tabWidth >= 13 {
+            return 9
+        }
+        return 0
+    }
+
+    private var pillCornerRadius: CGFloat {
+        min(6, max(2, tabWidth / 2))
+    }
 
     var body: some View {
-        HStack(spacing: 4) {
-            HStack(spacing: 6) {
-                if tab.isLoading {
-                    ProgressView()
-                        .controlSize(.mini)
-                        .frame(width: 12, height: 12)
-                } else if let favicon = tab.favicon {
-                    Image(nsImage: favicon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 14, height: 14)
-                        .cornerRadius(2)
+        ZStack(alignment: .leading) {
+            RoundedRectangle(cornerRadius: pillCornerRadius)
+                .fill(
+                    isSelected
+                        ? Color.primary.opacity(isBeingDragged ? 0.14 : 0.09)
+                        : (isHovered ? Color.primary.opacity(0.04) : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: pillCornerRadius)
+                        .stroke(isSelected ? Color.primary.opacity(0.06) : Color.clear, lineWidth: 0.5)
+                )
+
+            HStack(spacing: 5) {
+                if iconSize > 0 {
+                    if tab.isLoading {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .frame(width: iconSize, height: iconSize)
+                    } else if let favicon = tab.favicon {
+                        Image(nsImage: favicon)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: iconSize, height: iconSize)
+                            .cornerRadius(1)
+                    } else {
+                        Image(systemName: "globe")
+                            .font(.system(size: iconSize * 0.8))
+                            .foregroundColor(isSelected ? .primary : .secondary)
+                            .frame(width: iconSize, height: iconSize)
+                    }
                 } else {
-                    Image(systemName: "globe")
-                        .font(.system(size: 11))
-                        .foregroundColor(isSelected ? .primary : .secondary)
+                    Capsule()
+                        .fill(isSelected ? Color.primary.opacity(0.8) : Color.primary.opacity(isHovered ? 0.4 : 0.18))
+                        .frame(width: max(2, min(tabWidth - 2, 4)), height: 14)
                 }
 
-                Text(displayTitle)
-                    .font(.system(size: 12, weight: isSelected ? .medium : .regular))
-                    .foregroundColor(isSelected ? .primary : .secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if showsTitle {
+                    Text(displayTitle)
+                        .font(.system(size: 12, weight: isSelected ? .medium : .regular))
+                        .foregroundColor(isSelected ? .primary : .secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
             }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                PerformanceMonitor.shared.log(event: "Click", details: "Tab pill clicked: \"\(displayTitle)\"")
-                if isSelected && !tab.isNewTabState {
-                    viewModel.focusAddressBar()
-                } else {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
-                        viewModel.selectTab(id: tab.id)
+            .padding(.leading, showsTitle ? 8 : (showsCloseButton ? 4 : 2))
+            .padding(.trailing, showsCloseButton ? 20 : 4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: showsTitle ? .leading : .center)
+            .allowsHitTesting(false)
+
+            TabPillInteractionView(
+                tabWidth: tabWidth,
+                showsCloseButton: showsCloseButton,
+                onDragStarted: onDragStarted,
+                onDragChanged: onDragChanged,
+                onDragEnded: onDragEnded,
+                onSelect: onSelect,
+                onMiddleClick: {
+                    PerformanceMonitor.shared.log(event: "Click", details: "Middle-click closed tab: \"\(displayTitle)\"")
+                    viewModel.closeTab(id: tab.id)
+                }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if showsCloseButton {
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        PerformanceMonitor.shared.log(event: "Click", details: "Tab close button: \"\(displayTitle)\"")
+                        viewModel.closeTab(id: tab.id)
+                    }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .frame(width: 14, height: 14)
+                            .background(
+                                Circle().fill(Color.primary.opacity(isCloseHovered ? 0.12 : 0))
+                            )
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 4)
+                    .onHover { hovering in
+                        isCloseHovered = hovering
                     }
                 }
             }
-            .draggable(tab.id.uuidString)
-
-            Button(action: {
-                PerformanceMonitor.shared.log(event: "Click", details: "Tab close button: \"\(displayTitle)\"")
-                viewModel.closeTab(id: tab.id)
-            }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(.secondary)
-                    .frame(width: 16, height: 16)
-                    .background(
-                        Circle()
-                            .fill(Color.primary.opacity(isCloseHovered ? 0.12 : 0))
-                    )
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .opacity(isHovered || isSelected ? 1 : 0)
-            .onHover { hovering in
-                isCloseHovered = hovering
-            }
         }
-        .padding(.leading, 8)
-        .padding(.trailing, 6)
         .frame(width: tabWidth, height: 26)
-        .background(
-            ZStack {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 7)
-                        .fill(Color.primary.opacity(0.08))
-                        .matchedGeometryEffect(id: "activeTabBackground", in: tabNamespace)
-                } else if isHovered {
-                    RoundedRectangle(cornerRadius: 7)
-                        .fill(Color.primary.opacity(0.04))
-                }
-            }
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 7)
-                .stroke(isDropTargeted ? Color.accentColor : (isSelected ? Color.primary.opacity(0.06) : Color.clear), lineWidth: isDropTargeted ? 1.5 : 0.5)
-        )
-        .overlay(
-            MiddleClickAction {
-                PerformanceMonitor.shared.log(event: "Click", details: "Middle-click closed tab: \"\(displayTitle)\"")
-                viewModel.closeTab(id: tab.id)
-            }
-        )
+        .shadow(color: Color.black.opacity(isBeingDragged ? 0.18 : 0), radius: isBeingDragged ? 5 : 0, x: 0, y: isBeingDragged ? 2 : 0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.82), value: tabWidth)
+        .help(displayTitle)
         .onHover { hovering in
             isHovered = hovering
-        }
-        .dropDestination(for: String.self) { items, _ in
-            guard let draggedIdString = items.first,
-                  let draggedUUID = UUID(uuidString: draggedIdString),
-                  let fromIndex = viewModel.tabs.firstIndex(where: { $0.id == draggedUUID }),
-                  let toIndex = viewModel.tabs.firstIndex(where: { $0.id == tab.id }),
-                  fromIndex != toIndex else {
-                return false
-            }
-            PerformanceMonitor.shared.log(event: "Drag", details: "Tab \"\(displayTitle)\" dropped from [\(fromIndex)] onto [\(toIndex)]")
-            withAnimation(.easeInOut(duration: 0.2)) {
-                viewModel.moveTab(from: fromIndex, to: toIndex)
-            }
-            return true
-        } isTargeted: { targeted in
-            isDropTargeted = targeted
         }
     }
 
