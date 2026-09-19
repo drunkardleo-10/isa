@@ -8,8 +8,14 @@ struct ShortcutsSectionView: View {
     let onAddShortcut: () -> Void
     let onEditShortcut: (ShortcutItem) -> Void
 
+    private let columns = [
+        GridItem(.fixed(72), spacing: 20),
+        GridItem(.fixed(72), spacing: 20),
+        GridItem(.fixed(72), spacing: 20)
+    ]
+
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
+        LazyVGrid(columns: columns, alignment: .center, spacing: 16) {
             ForEach(manager.shortcuts) { item in
                 ShortcutTileView(
                     item: item,
@@ -43,7 +49,7 @@ struct ShortcutsSectionView: View {
                 AddShortcutTileView(action: onAddShortcut)
             }
         }
-        .frame(maxWidth: 520)
+        .frame(width: 72 * 3 + 20 * 2)
     }
 }
 

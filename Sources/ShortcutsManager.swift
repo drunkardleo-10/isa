@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import Combine
+import CryptoKit
 
 struct ShortcutItem: Identifiable, Codable, Equatable {
     var id: UUID
@@ -96,13 +97,71 @@ final class ShortcutsManager: ObservableObject {
 
     func fetchFavicon(for item: ShortcutItem) {
         guard let url = URL(string: item.url), let host = url.host, !host.isEmpty else { return }
-        guard let iconURL = URL(string: "https://www.google.com/s2/favicons?domain=\(host)&sz=64") else { return }
+        let rootHost = extractRootHost(from: host)
 
-        URLSession.shared.dataTask(with: iconURL) { [weak self] data, _, _ in
-            guard let data = data, let image = NSImage(data: data) else { return }
-            DispatchQueue.main.async {
-                self?.favicons[item.id] = image
+        var candidateURLs: [URL] = []
+
+        if let direct = URL(string: "https://\(host)/favicon.ico") {
+            candidateURLs.append(direct)
+        }
+        if rootHost != host, let directRoot = URL(string: "https://\(rootHost)/favicon.ico") {
+            candidateURLs.append(directRoot)
+        }
+        if let ddgHost = URL(string: "https://icons.duckduckgo.com/ip3/\(host).ico") {
+            candidateURLs.append(ddgHost)
+        }
+        if rootHost != host, let ddgRoot = URL(string: "https://icons.duckduckgo.com/ip3/\(rootHost).ico") {
+            candidateURLs.append(ddgRoot)
+        }
+        if let googleHost = URL(string: "https://www.google.com/s2/favicons?domain=\(host)&sz=64") {
+            candidateURLs.append(googleHost)
+        }
+        if rootHost != host, let googleRoot = URL(string: "https://www.google.com/s2/favicons?domain=\(rootHost)&sz=64") {
+            candidateURLs.append(googleRoot)
+        }
+
+        tryFetchFavicon(from: candidateURLs, for: item.id)
+    }
+
+    private func tryFetchFavicon(from candidates: [URL], for itemId: UUID) {
+        guard !candidates.isEmpty else { return }
+        var remaining = candidates
+        let currentURL = remaining.removeFirst()
+
+        var request = URLRequest(url: currentURL, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 4.0)
+        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", forHTTPHeaderField: "User-Agent")
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+            guard let self = self else { return }
+
+            if let http = response as? HTTPURLResponse, http.statusCode == 200,
+               let data = data, !data.isEmpty,
+               !self.isFallbackGlobe(data: data),
+               let image = NSImage(data: data),
+               image.isValid, image.size.width > 1 && image.size.height > 1 {
+                DispatchQueue.main.async {
+                    self.favicons[itemId] = image
+                }
+            } else {
+                self.tryFetchFavicon(from: remaining, for: itemId)
             }
         }.resume()
+    }
+
+    private func isFallbackGlobe(data: Data) -> Bool {
+        if data.count == 726 { return true }
+        let md5 = Insecure.MD5.hash(data: data).map { String(format: "%02hhx", $0) }.joined()
+        return md5 == "b8a0bf372c762e966cc99ede8682bc71"
+    }
+
+    private func extractRootHost(from host: String) -> String {
+        let parts = host.lowercased().split(separator: ".").map(String.init)
+        guard parts.count > 2 else { return host }
+        let specialTLDs = ["co.uk", "com.au", "co.in", "com.br", "co.nz", "co.jp", "com.sg"]
+        let lastTwo = parts.suffix(2).joined(separator: ".")
+        if specialTLDs.contains(lastTwo) && parts.count > 3 {
+            return parts.suffix(3).joined(separator: ".")
+        }
+        return parts.suffix(2).joined(separator: ".")
     }
 }
