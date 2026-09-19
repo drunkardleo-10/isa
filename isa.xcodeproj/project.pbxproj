@@ -17,11 +17,13 @@
 		CE1833878057E0544DAEEE91 /* WebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6347A7548A0AB7642EBF924 /* WebView.swift */; };
 		D4356FC567DDF9244C71A270 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6D6C2DA623C79C993BEC85B /* ContentView.swift */; };
 		E9636DAA3EBF1F919D9C988B /* ShortcutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A08E9252783AEF945D7C938 /* ShortcutsView.swift */; };
+		FD89C2DA18D8E9BAAFF593DA /* cosmetic-filters.json in Resources */ = {isa = PBXBuildFile; fileRef = 72261784DAB32E409CD0F35A /* cosmetic-filters.json */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		2A08E9252783AEF945D7C938 /* ShortcutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsView.swift; sourceTree = "<group>"; };
 		2A2C691A1D2C45FCE3AF7760 /* BrowserApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserApp.swift; sourceTree = "<group>"; };
+		72261784DAB32E409CD0F35A /* cosmetic-filters.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "cosmetic-filters.json"; sourceTree = "<group>"; };
 		743BD572D7B7FC8B70AE8D69 /* isa.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = isa.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7DCDF41A4FBF447C8ACDE379 /* ShortcutsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsManager.swift; sourceTree = "<group>"; };
 		A6347A7548A0AB7642EBF924 /* WebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebView.swift; sourceTree = "<group>"; };
@@ -71,6 +73,7 @@
 			isa = PBXGroup;
 			children = (
 				F0A52A1F857D2F78C1C727B7 /* content-blocker.json */,
+				72261784DAB32E409CD0F35A /* cosmetic-filters.json */,
 			);
 			path = rules;
 			sourceTree = "<group>";
@@ -143,6 +146,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4EEA959AC96C786DCE929A72 /* content-blocker.json in Resources */,
+				FD89C2DA18D8E9BAAFF593DA /* cosmetic-filters.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

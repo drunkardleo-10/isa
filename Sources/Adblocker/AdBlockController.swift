@@ -15,23 +15,30 @@ public final class AdBlockController {
 
     private let lock = NSLock()
     private var state: State = .uninitialized
+    private var cosmeticUserScript: WKUserScript?
 
     public init() {
+        loadCosmeticFilterScript()
         startLoadingRuleListIfNeeded()
     }
 
-    /// Exposes a single class method to apply the compiled rule list to a WKWebViewConfiguration.
+    
     public static func apply(to configuration: WKWebViewConfiguration) {
         shared.apply(to: configuration)
     }
 
-    /// Applies the compiled rule list to the configuration's userContentController.
-    /// Thread-safe and idempotent. If called during cold launch before lookup/compile finishes,
-    /// it synchronizes so that the rule list is attached before the WKWebView is instantiated.
+    
+    
+    
     public func apply(to configuration: WKWebViewConfiguration) {
         startLoadingRuleListIfNeeded()
 
-        // Fast path: rule list is already compiled and cached in memory
+        if ProcessInfo.processInfo.environment["ISA_DISABLE_COSMETIC"] != "1",
+           let cosmeticScript = cosmeticUserScript {
+            configuration.userContentController.addUserScript(cosmeticScript)
+        }
+
+        
         lock.lock()
         if case .ready(let ruleList) = state {
             lock.unlock()
@@ -40,7 +47,7 @@ public final class AdBlockController {
         }
         lock.unlock()
 
-        // In-flight synchronization: wait for compilation/lookup to finish so webview is never unshielded
+        
         waitForReadiness()
 
         lock.lock()
@@ -50,6 +57,80 @@ public final class AdBlockController {
         } else {
             PerformanceMonitor.shared.log(event: "AdBlock", details: "Rule list unavailable; proceeding without content blocker")
         }
+    }
+
+    private func loadCosmeticFilterScript() {
+        let candidateURLs: [URL?] = [
+            Bundle.main.url(forResource: "cosmetic-filters", withExtension: "json"),
+            Bundle.main.url(forResource: "cosmetic-filters", withExtension: "json", subdirectory: "rules"),
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/cosmetic-filters.json"),
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/rules/cosmetic-filters.json"),
+            URL(fileURLWithPath: "rules/cosmetic-filters.json"),
+            Bundle.main.bundleURL.appendingPathComponent("rules/cosmetic-filters.json")
+        ]
+
+        guard let url = candidateURLs.compactMap({ $0 }).first(where: { FileManager.default.fileExists(atPath: $0.path) }),
+              let jsonString = try? String(contentsOf: url, encoding: .utf8),
+              !jsonString.isEmpty else {
+            PerformanceMonitor.shared.log(event: "AdBlock", details: "Cosmetic filters file not found or empty")
+            return
+        }
+
+        let jsSource = """
+        (function() {
+            if (window.__isa_cosmetic_applied__) return;
+            window.__isa_cosmetic_applied__ = true;
+
+            var rules = \(jsonString);
+            var hostname = (window.location && window.location.hostname) ? window.location.hostname.toLowerCase() : "";
+            if (!hostname) return;
+
+            var parts = hostname.split(".");
+            var selectors = [];
+            for (var i = 0; i < parts.length - 1; i++) {
+                var domain = parts.slice(i).join(".");
+                var sel = rules[domain];
+                if (sel) {
+                    selectors.push(sel);
+                }
+            }
+
+            if (selectors.length === 0) return;
+
+            var style = document.createElement("style");
+            style.setAttribute("type", "text/css");
+            style.setAttribute("data-isa-adblock", "cosmetic");
+            style.textContent = selectors.join(",\\n") + " { display: none !important; }";
+
+            function tryInject() {
+                var target = document.head || document.documentElement;
+                if (target) {
+                    target.appendChild(style);
+                    return true;
+                }
+                return false;
+            }
+
+            if (!tryInject()) {
+                if (window.MutationObserver) {
+                    var observer = new MutationObserver(function() {
+                        if (tryInject()) {
+                            observer.disconnect();
+                        }
+                    });
+                    observer.observe(document, { childList: true, subtree: true });
+                }
+                document.addEventListener("DOMContentLoaded", tryInject, { once: true });
+            }
+        })();
+        """
+
+        self.cosmeticUserScript = WKUserScript(
+            source: jsSource,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        PerformanceMonitor.shared.log(event: "AdBlock", details: "Cosmetic filtering script loaded and compiled successfully")
     }
 
     private func startLoadingRuleListIfNeeded() {
@@ -69,7 +150,7 @@ public final class AdBlockController {
 
         PerformanceMonitor.shared.log(event: "AdBlockLookup", details: "Checking persistent store for identifier: \(Self.ruleListIdentifier)")
 
-        // Check persistent store first to avoid recompiling across launches
+        
         store.lookUpContentRuleList(forIdentifier: Self.ruleListIdentifier) { [weak self] ruleList, error in
             guard let self = self else { return }
 
@@ -137,9 +218,9 @@ public final class AdBlockController {
         lock.unlock()
     }
 
-    /// Waits for in-flight compilation/lookup to resolve.
-    /// On the main thread, pumps the RunLoop in short slices so WebKit's IPC messages can be delivered
-    /// without deadlocking the main queue. Includes a 10s safety timeout to prevent app hangs.
+    
+    
+    
     private func waitForReadiness(timeout: TimeInterval = 10.0) {
         let deadline = Date().addingTimeInterval(timeout)
 
@@ -148,7 +229,7 @@ public final class AdBlockController {
                 lock.lock()
                 if case .loading = state {
                     lock.unlock()
-                    // Run loop briefly to allow WebKit's completion handler to execute
+                    
                     RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.02))
                 } else {
                     lock.unlock()

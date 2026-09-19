@@ -1,19 +1,21 @@
 # Adblocker Module
 
-Native WebKit content-blocking integration for `isa`, powered by compiled network filtering rules from EasyList and EasyPrivacy.
+Native WebKit content-blocking and cosmetic element hiding integration for `isa`, powered by compiled network filtering rules and cosmetic CSS selectors from EasyList and EasyPrivacy.
 
 ---
 
-## What This Base Version Does and Does Not Do
+## What This Version Does and Does Not Do
 
 ### What it does:
 - **Network Request Blocking**: Blocks network requests matching EasyList and EasyPrivacy network rules (advertisements, analytics, trackers, fingerprinting scripts, and known ad-serving domains).
 - **Subresource Coverage**: Operates natively within WebKit's `WKContentRuleList` engine, blocking matching subresources (scripts, images, iframes, stylesheets, and XHR/fetch calls) before network transmission occurs, not just top-level navigations.
+- **Cosmetic Element Hiding**: Injects domain-targeted CSS selectors as a `WKUserScript` at `.atDocumentStart`, collapsing empty ad slots, sponsor placeholders, and leftover gray boxes before the DOM paints to eliminate layout flicker (FOUC).
+- **Defensive Multi-Tier DOM Injection**: The cosmetic user script checks for `document.head || document.documentElement` immediately; if not yet parsed, it utilizes a `MutationObserver` on `document` to attach the style the exact microtask the root node is created, with `DOMContentLoaded` as a reliable fallback.
+- **Strict Dot-Boundary Subdomain Decomposition**: Exact suffix decomposition (`parts.slice(i).join('.')`) ensures subdomains like `m.youtube.com` match `youtube.com` rules without risk of false-positive substring matches (e.g., `notyoutube.com` never matches).
 - **One-Time Persistent Compilation**: Automatically checks `WKContentRuleListStore.default().lookUpContentRuleList` to reuse WebKit's on-disk compiled bytecode across app launches. Rule compilation happens only on the first cold launch or after rule updates, avoiding repeated overhead.
-- **Thread-Safe & Zero-Regression Multi-Tab Cold Launch**: Ensures that rapid tab openings immediately at launch cannot bypass the blocker; WebViews are never initialized without rules attached.
+- **Thread-Safe & Zero-Regression Multi-Tab Cold Launch**: Ensures that rapid tab openings immediately at launch cannot bypass the blocker; WebViews are never initialized without rules and cosmetic scripts attached.
 
 ### What it does NOT do:
-- **No Cosmetic Filtering**: Does not perform cosmetic element hiding (CSS `#container { display: none }` rules to hide empty ad placeholders or collapsed frames). Cosmetic filtering is planned as a separate experiment.
 - **No Scriptlets / Script Injection**: Does not inject scriptlet de-fang routines or custom anti-adblock defusers.
 - **No Dynamic / Live Rule Updates**: Rules are not fetched or updated over the air at runtime.
 - **No Per-Site Allowlisting or UI**: There is currently no UI toggle or per-domain exception whitelist in this pass.
@@ -26,7 +28,7 @@ Native WebKit content-blocking integration for `isa`, powered by compiled networ
 During evaluation between the Rust CLI vs the published npm/WASM build (`adblock-rs`):
 1. **API Capability**: The npm package `adblock-rs` only exposes the runtime matching engine (`Engine`) for Node.js. It does **not** expose the Apple Safari/WebKit `content-blocking` conversion module.
 2. **Setup Cost**: The npm package actually compiles native Rust code via `cargo build` during its `postinstall` hook anyway, so an active Rust toolchain is required in both cases.
-3. **Native Support**: The native `adblock` Rust crate (`v0.13.3`) includes built-in, first-class support for `features = ["content-blocking"]`. It provides exact `WKContentRuleList`-compatible rule definitions (`CbRule`, `CbTrigger`, `CbAction`, and `ignore_previous_fp_documents`), parsing ~140,000 raw rules and outputting verified Safari JSON in ~80 milliseconds.
+3. **Native Support**: The native `adblock` Rust crate (`v0.13.3`) includes built-in, first-class support for `features = ["content-blocking"]`. It provides exact `WKContentRuleList`-compatible rule definitions (`CbRule`, `CbTrigger`, `CbAction`, and `ignore_previous_fp_documents`), parsing ~140,000 raw rules and outputting verified Safari JSON and cosmetic filters in under 100 milliseconds.
 
 Consequently, `tools/rule-converter/` was built as a dedicated Rust CLI using the `adblock` crate.
 
@@ -44,10 +46,13 @@ To update the rules to the latest EasyList and EasyPrivacy snapshots:
 
 ### What `generate_rules.sh` does:
 1. Downloads the latest `easylist.txt` and `easyprivacy.txt` using `curl` with retries into a secure temporary directory.
-2. Validates line counts to ensure downloads are complete and uncorrupted.
-3. Runs `scripts/rule-converter` to transform ABP network syntax into WebKit content-blocking JSON.
-4. Validates the output with WebKit's native `WKContentRuleListStore.compileContentRuleList` to guarantee that WebKit accepts the rules.
-5. Atomically writes the result to `rules/content-blocker.json`.
-6. Cleans up all temporary raw list files.
+2. Validates line counts to ensure downloads are complete and uncorrupted (>30k EasyList lines, >20k EasyPrivacy lines).
+3. Runs `tools/rule-converter` to transform ABP network syntax into WebKit content-blocking JSON and domain-specific cosmetic CSS selectors.
+4. Validates the network rules with WebKit's native `WKContentRuleListStore.compileContentRuleList` to guarantee that WebKit accepts the rules.
+5. Validates the cosmetic filters JSON structure and domain coverage (>5,000 domains).
+6. Atomically writes results to:
+   - `rules/content-blocker.json`
+   - `rules/cosmetic-filters.json`
+7. Cleans up all temporary raw list files.
 
-After running `generate_rules.sh`, commit the updated `rules/content-blocker.json` to git.
+After running `generate_rules.sh`, commit the updated `rules/content-blocker.json` and `rules/cosmetic-filters.json` to git.
