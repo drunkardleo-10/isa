@@ -373,6 +373,7 @@ struct ActiveTabOverlayView: View {
                 }
             }
             .onChange(of: addressInput) { _, newValue in
+                tab.addressText = newValue
                 let text = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 if text.isEmpty {
                     withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
@@ -411,11 +412,7 @@ struct ActiveTabOverlayView: View {
     }
 
     private func syncInput() {
-        if let url = tab.currentURL {
-            addressInput = url.absoluteString
-        } else {
-            addressInput = tab.addressText
-        }
+        addressInput = tab.addressText
         withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
             suggestions = []
             selectedSuggestionIndex = -1
