@@ -10,6 +10,10 @@ targets:
     deploymentTarget: "14.0"
     sources:
       - path: Sources
+        excludes:
+          - "**/*.md"
+      - path: rules/content-blocker.json
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: isa

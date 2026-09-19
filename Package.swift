@@ -13,7 +13,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "isa",
-            path: "Sources"
+            path: "Sources",
+            exclude: ["Adblocker/README.md"]
         )
     ]
 )

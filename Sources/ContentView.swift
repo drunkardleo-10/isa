@@ -416,7 +416,7 @@ struct TabPillInteractionView: NSViewRepresentable {
         }
 
         override var intrinsicContentSize: NSSize {
-            return NSSize(width: tabWidth, height: 26)
+            return NSSize(width: NSView.noIntrinsicMetric, height: 26)
         }
 
         override func hitTest(_ point: NSPoint) -> NSView? {
@@ -839,7 +839,7 @@ struct TabPillView: View {
     @State private var isCloseHovered: Bool = false
 
     private var showsTitle: Bool {
-        tabWidth >= 56
+        tabWidth >= 76
     }
 
     private var showsCloseButton: Bool {
@@ -924,7 +924,8 @@ struct TabPillView: View {
             }
             .padding(.leading, showsTitle ? 8 : (showsCloseButton ? 4 : 2))
             .padding(.trailing, showsCloseButton ? 20 : 4)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: showsTitle ? .leading : .center)
+            .frame(width: tabWidth, height: 26, alignment: showsTitle ? .leading : .center)
+            .clipped()
             .allowsHitTesting(false)
 
             TabPillInteractionView(
@@ -966,6 +967,7 @@ struct TabPillView: View {
             }
         }
         .frame(width: tabWidth, height: 26)
+        .clipped()
         .shadow(color: Color.black.opacity(isBeingDragged ? 0.18 : 0), radius: isBeingDragged ? 5 : 0, x: 0, y: isBeingDragged ? 2 : 0)
         .animation(.spring(response: 0.3, dampingFraction: 0.82), value: tabWidth)
         .help(displayTitle)
