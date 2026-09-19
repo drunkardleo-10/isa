@@ -4,6 +4,7 @@ import ObjectiveC
 
 struct ContentView: View {
     @ObservedObject var viewModel: BrowserViewModel
+    @Namespace private var tabNamespace
     @State private var draggingTabId: UUID? = nil
     @State private var dragOffset: CGFloat = 0
     @State private var dragInitialIndex: Int? = nil
@@ -37,7 +38,9 @@ struct ContentView: View {
             Group {
                 ForEach(1...9, id: \.self) { num in
                     Button("") {
-                        viewModel.selectTabNumber(num)
+                        withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                            viewModel.selectTabNumber(num)
+                        }
                     }
                     .keyboardShortcut(KeyEquivalent(Character("\(num)")), modifiers: .command)
                 }
@@ -103,8 +106,10 @@ struct ContentView: View {
                                     tab: tab,
                                     viewModel: viewModel,
                                     isSelected: tab.id == viewModel.selectedTabId,
+                                    tabNamespace: tabNamespace,
                                     tabWidth: tabWidth,
                                     isBeingDragged: draggingTabId == tab.id,
+                                    isAnyTabDragging: draggingTabId != nil,
                                     onDragStarted: {
                                         handleTabDragStarted(tab: tab)
                                     },
@@ -118,7 +123,9 @@ struct ContentView: View {
                                         if tab.id == viewModel.selectedTabId && !tab.isNewTabState {
                                             viewModel.focusAddressBar()
                                         } else {
-                                            viewModel.selectTab(id: tab.id)
+                                            withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                                                viewModel.selectTab(id: tab.id)
+                                            }
                                         }
                                     }
                                 )
@@ -132,22 +139,10 @@ struct ContentView: View {
                                 ))
                             }
 
-                            Button(action: {
+                            NewTabButton {
                                 PerformanceMonitor.shared.log(event: "Click", details: "New Tab (+) button")
                                 viewModel.createNewTab()
-                            }) {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(.secondary)
-                                    .frame(width: 20, height: 20)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 5)
-                                            .fill(Color.primary.opacity(0.05))
-                                    )
-                                    .contentShape(RoundedRectangle(cornerRadius: 5))
                             }
-                            .buttonStyle(.plain)
-                            .help("New Tab (⌘T)")
                         }
                         .padding(.trailing, 2)
                         .animation(.spring(response: 0.3, dampingFraction: 0.82), value: viewModel.tabs.count)
@@ -489,6 +484,8 @@ struct ActiveTabOverlayView: View {
     @State private var eventMonitor: Any? = nil
     @State private var suggestions: [SuggestionItem] = []
     @State private var selectedSuggestionIndex: Int = -1
+    @State private var isAddShortcutPresented: Bool = false
+    @State private var editingShortcut: ShortcutItem? = nil
 
     var body: some View {
         if tab.isNewTabState || tab.isAddressOverlayPresented {
@@ -503,7 +500,9 @@ struct ActiveTabOverlayView: View {
                     Color.clear
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            isFocused = true
+                            if !isAddShortcutPresented {
+                                isFocused = true
+                            }
                         }
                 }
 
@@ -589,11 +588,64 @@ struct ActiveTabOverlayView: View {
                                     .combined(with: .scale(scale: 0.99, anchor: .top))
                             )
                         )
+                    } else if tab.isNewTabState {
+                        ShortcutsSectionView(
+                            viewModel: viewModel,
+                            tab: tab,
+                            onAddShortcut: {
+                                editingShortcut = nil
+                                withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                                    isAddShortcutPresented = true
+                                }
+                            },
+                            onEditShortcut: { item in
+                                editingShortcut = item
+                                withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                                    isAddShortcutPresented = true
+                                }
+                            }
+                        )
+                        .padding(.top, 28)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
                     }
 
                     Spacer()
                 }
                 .animation(.spring(response: 0.18, dampingFraction: 0.86), value: suggestions.map { $0.id })
+
+                if isAddShortcutPresented {
+                    ShortcutEditorModalView(
+                        editingItem: editingShortcut,
+                        onSave: { title, url in
+                            if let editing = editingShortcut {
+                                ShortcutsManager.shared.updateShortcut(id: editing.id, title: title, url: url)
+                            } else {
+                                ShortcutsManager.shared.addShortcut(title: title, url: url)
+                            }
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                                isAddShortcutPresented = false
+                                editingShortcut = nil
+                            }
+                        },
+                        onCancel: {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                                isAddShortcutPresented = false
+                                editingShortcut = nil
+                            }
+                        },
+                        onDelete: editingShortcut != nil ? {
+                            if let editing = editingShortcut {
+                                ShortcutsManager.shared.removeShortcut(id: editing.id)
+                            }
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                                isAddShortcutPresented = false
+                                editingShortcut = nil
+                            }
+                        } : nil
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .center)))
+                    .zIndex(100)
+                }
             }
             .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .center)))
             .onAppear {
@@ -602,6 +654,9 @@ struct ActiveTabOverlayView: View {
                     isFocused = true
                 }
                 eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                    if isAddShortcutPresented {
+                        return event
+                    }
                     if tab.isNewTabState || tab.isAddressOverlayPresented {
                         if event.keyCode == 125 {
                             if !suggestions.isEmpty {
@@ -759,8 +814,10 @@ struct TabPillView: View {
     @ObservedObject var tab: Tab
     @ObservedObject var viewModel: BrowserViewModel
     let isSelected: Bool
+    let tabNamespace: Namespace.ID
     let tabWidth: CGFloat
     let isBeingDragged: Bool
+    let isAnyTabDragging: Bool
     let onDragStarted: () -> Void
     let onDragChanged: (CGFloat) -> Void
     let onDragEnded: () -> Void
@@ -799,16 +856,27 @@ struct TabPillView: View {
 
     var body: some View {
         ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: pillCornerRadius)
-                .fill(
-                    isSelected
-                        ? Color.primary.opacity(isBeingDragged ? 0.14 : 0.09)
-                        : (isHovered ? Color.primary.opacity(0.04) : Color.clear)
-                )
-                .overlay(
+            if isSelected {
+                if isAnyTabDragging {
                     RoundedRectangle(cornerRadius: pillCornerRadius)
-                        .stroke(isSelected ? Color.primary.opacity(0.06) : Color.clear, lineWidth: 0.5)
-                )
+                        .fill(Color.primary.opacity(isBeingDragged ? 0.14 : 0.09))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: pillCornerRadius)
+                                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                        )
+                } else {
+                    RoundedRectangle(cornerRadius: pillCornerRadius)
+                        .fill(Color.primary.opacity(0.09))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: pillCornerRadius)
+                                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                        )
+                        .matchedGeometryEffect(id: "activeTabSlidingPill", in: tabNamespace)
+                }
+            } else if isHovered {
+                RoundedRectangle(cornerRadius: pillCornerRadius)
+                    .fill(Color.primary.opacity(0.04))
+            }
 
             HStack(spacing: 5) {
                 if iconSize > 0 {
@@ -904,3 +972,32 @@ struct TabPillView: View {
         return "New Tab"
     }
 }
+
+struct NewTabButton: View {
+    let action: () -> Void
+    @State private var isHovered: Bool = false
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Color.primary.opacity(isHovered ? 0.10 : 0.05))
+
+            Image(systemName: "plus")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(isHovered ? .primary : .secondary)
+        }
+        .frame(width: 20, height: 20)
+        .contentShape(Rectangle())
+        .background(NonDraggableBackground())
+        .onTapGesture {
+            action()
+        }
+        .onHover { hovering in
+            if isHovered != hovering {
+                isHovered = hovering
+            }
+        }
+        .help("New Tab (⌘T)")
+    }
+}
+
