@@ -194,14 +194,7 @@ struct ShortcutEditorModalView: View {
     @FocusState private var isUrlFocused: Bool
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.35)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    onCancel()
-                }
-
-            VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 16) {
                 Text(editingItem == nil ? "Add shortcut" : "Edit shortcut")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.primary)
@@ -224,7 +217,11 @@ struct ShortcutEditorModalView: View {
                                 .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
                         )
                         .onSubmit {
-                            submitIfValid()
+                            if urlInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                isUrlFocused = true
+                            } else {
+                                submitIfValid()
+                            }
                         }
                 }
 
@@ -308,22 +305,18 @@ struct ShortcutEditorModalView: View {
                     .stroke(Color(nsColor: .separatorColor).opacity(0.7), lineWidth: 0.5)
             )
             .shadow(color: Color.black.opacity(0.22), radius: 24, x: 0, y: 12)
-        }
-        .onAppear {
-            if let item = editingItem {
-                nameInput = item.title
-                urlInput = item.url
+            .onAppear {
+                if let item = editingItem {
+                    nameInput = item.title
+                    urlInput = item.url
+                } else {
+                    nameInput = ""
+                    urlInput = ""
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                     isNameFocused = true
                 }
-            } else {
-                nameInput = ""
-                urlInput = ""
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    isUrlFocused = true
-                }
             }
-        }
     }
 
     private var isURLValid: Bool {

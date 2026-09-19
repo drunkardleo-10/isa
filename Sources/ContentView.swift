@@ -13,6 +13,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
+                .zIndex(10)
 
             ZStack {
                 Color(nsColor: .windowBackgroundColor)
@@ -614,6 +615,17 @@ struct ActiveTabOverlayView: View {
                 .animation(.spring(response: 0.18, dampingFraction: 0.86), value: suggestions.map { $0.id })
 
                 if isAddShortcutPresented {
+                    Color.black.opacity(0.25)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                                isAddShortcutPresented = false
+                                editingShortcut = nil
+                            }
+                        }
+                        .transition(.opacity)
+                        .zIndex(99)
+
                     ShortcutEditorModalView(
                         editingItem: editingShortcut,
                         onSave: { title, url in
@@ -643,7 +655,7 @@ struct ActiveTabOverlayView: View {
                             }
                         } : nil
                     )
-                    .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .center)))
+                    .transition(.scale(scale: 0.95, anchor: .center).combined(with: .opacity))
                     .zIndex(100)
                 }
             }
