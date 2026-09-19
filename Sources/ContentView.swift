@@ -9,24 +9,55 @@ struct ContentView: View {
     @State private var dragOffset: CGFloat = 0
     @State private var dragInitialIndex: Int? = nil
     @State private var dragTargetIndex: Int? = nil
+    @State private var isShieldPopoverPresented: Bool = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            topBar
-                .zIndex(10)
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 0) {
+                topBar
+                    .zIndex(10)
 
-            ZStack {
-                Color(nsColor: .windowBackgroundColor)
+                ZStack {
+                    Color(nsColor: .windowBackgroundColor)
 
-                ForEach(viewModel.tabs) { tab in
-                    if !tab.isNewTabState || tab.webView != nil || tab.isSleeping {
-                        WebView(tab: tab)
-                            .opacity(tab.id == viewModel.selectedTabId && !tab.isNewTabState ? 1 : 0)
-                            .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isNewTabState && !tab.isAddressOverlayPresented)
+                    ForEach(viewModel.tabs) { tab in
+                        if !tab.isNewTabState || tab.webView != nil || tab.isSleeping {
+                            WebView(tab: tab)
+                                .opacity(tab.id == viewModel.selectedTabId && !tab.isNewTabState ? 1 : 0)
+                                .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isNewTabState && !tab.isAddressOverlayPresented && !isShieldPopoverPresented)
+                        }
                     }
-                }
 
-                ActiveTabOverlayView(tab: viewModel.activeTab, viewModel: viewModel)
+                    ActiveTabOverlayView(tab: viewModel.activeTab, viewModel: viewModel)
+                }
+            }
+
+            if isShieldPopoverPresented {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.10)) {
+                            isShieldPopoverPresented = false
+                        }
+                    }
+                    .zIndex(90)
+
+                AdBlockStatusPopover(viewModel: viewModel)
+                    .padding(.top, 36)
+                    .padding(.trailing, 12)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.95, anchor: .topTrailing).combined(with: .opacity),
+                        removal: .scale(scale: 0.95, anchor: .topTrailing).combined(with: .opacity)
+                    ))
+                    .zIndex(100)
+            }
+        }
+        .onExitCommand {
+            if isShieldPopoverPresented {
+                withAnimation(.easeOut(duration: 0.10)) {
+                    isShieldPopoverPresented = false
+                }
             }
         }
         .onAppear {
@@ -62,6 +93,21 @@ struct ContentView: View {
                 .frame(width: 78, height: 32)
 
             tabStripView
+
+            Button(action: {
+                PerformanceMonitor.shared.log(event: "Click", details: "AdBlock shield popover toggle")
+                withAnimation(.spring(response: 0.18, dampingFraction: 0.85)) {
+                    isShieldPopoverPresented.toggle()
+                }
+            }) {
+                Image(systemName: "checkmark.shield")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(isShieldPopoverPresented ? .primary : .secondary)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Ad & Tracker Protection")
 
             Button(action: {
                 PerformanceMonitor.shared.log(event: "Click", details: "Theme toggle button (Current: \(viewModel.theme.rawValue))")

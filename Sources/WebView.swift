@@ -59,6 +59,9 @@ struct WebView: NSViewRepresentable {
                 self.tab.canGoBack = webView.canGoBack
                 self.tab.canGoForward = webView.canGoForward
                 PerformanceMonitor.shared.log(event: "LoadFinish", details: "Loaded \"\(self.tab.pageTitle)\" in \(durationMs)ms")
+                if let host = webView.url?.host {
+                    AdBlockController.recordNavigation(for: host)
+                }
             }
             fetchFavicon(for: webView)
         }

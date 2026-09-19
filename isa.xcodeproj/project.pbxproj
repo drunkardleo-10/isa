@@ -15,6 +15,7 @@
 		78FD3D3F6111BD300BA2D66C /* AdBlockController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCFA86E23377365E7AD1051C /* AdBlockController.swift */; };
 		A35520F95DD2AC73636C943C /* ShortcutsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DCDF41A4FBF447C8ACDE379 /* ShortcutsManager.swift */; };
 		CE1833878057E0544DAEEE91 /* WebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6347A7548A0AB7642EBF924 /* WebView.swift */; };
+		D003D2BBA8D57BF873C46FD5 /* AdBlockStatusPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52EBA0EC0EF38D81593115C /* AdBlockStatusPopover.swift */; };
 		D4356FC567DDF9244C71A270 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6D6C2DA623C79C993BEC85B /* ContentView.swift */; };
 		E9636DAA3EBF1F919D9C988B /* ShortcutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A08E9252783AEF945D7C938 /* ShortcutsView.swift */; };
 		FD89C2DA18D8E9BAAFF593DA /* cosmetic-filters.json in Resources */ = {isa = PBXBuildFile; fileRef = 72261784DAB32E409CD0F35A /* cosmetic-filters.json */; };
@@ -26,6 +27,7 @@
 		72261784DAB32E409CD0F35A /* cosmetic-filters.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "cosmetic-filters.json"; sourceTree = "<group>"; };
 		743BD572D7B7FC8B70AE8D69 /* isa.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = isa.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7DCDF41A4FBF447C8ACDE379 /* ShortcutsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsManager.swift; sourceTree = "<group>"; };
+		A52EBA0EC0EF38D81593115C /* AdBlockStatusPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdBlockStatusPopover.swift; sourceTree = "<group>"; };
 		A6347A7548A0AB7642EBF924 /* WebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebView.swift; sourceTree = "<group>"; };
 		AA9867D2DC69FD0595345C1F /* PerformanceMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceMonitor.swift; sourceTree = "<group>"; };
 		BE843F5CEBEB649CA5A2E830 /* BrowserViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserViewModel.swift; sourceTree = "<group>"; };
@@ -56,6 +58,7 @@
 			isa = PBXGroup;
 			children = (
 				FCFA86E23377365E7AD1051C /* AdBlockController.swift */,
+				A52EBA0EC0EF38D81593115C /* AdBlockStatusPopover.swift */,
 			);
 			path = Adblocker;
 			sourceTree = "<group>";
@@ -158,6 +161,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				78FD3D3F6111BD300BA2D66C /* AdBlockController.swift in Sources */,
+				D003D2BBA8D57BF873C46FD5 /* AdBlockStatusPopover.swift in Sources */,
 				09EB134DA3A87B4FF18C5A46 /* BrowserApp.swift in Sources */,
 				2E9935927389BC58B3C79634 /* BrowserViewModel.swift in Sources */,
 				D4356FC567DDF9244C71A270 /* ContentView.swift in Sources */,
