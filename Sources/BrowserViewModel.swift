@@ -34,6 +34,15 @@ enum AppTheme: String, CaseIterable {
     }
 }
 
+final class BrowserWebView: WKWebView {
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.keyCode == 51 && event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty {
+            return false
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+}
+
 final class Tab: Identifiable, ObservableObject {
     let id: UUID = UUID()
     @Published var addressText: String = ""
@@ -67,7 +76,33 @@ final class Tab: Identifiable, ObservableObject {
         preferences.preferredContentMode = .desktop
         configuration.defaultWebpagePreferences = preferences
         configuration.applicationNameForUserAgent = "Version/18.0 Safari/605.1.15"
-        let newWebView = WKWebView(frame: .zero, configuration: configuration)
+        let backspaceScript = WKUserScript(
+            source: """
+            window.addEventListener('keydown', function(e) {
+                if (e.key === 'Backspace' || e.keyCode === 8) {
+                    var t = e.target;
+                    var isEditable = false;
+                    if (t) {
+                        var tag = t.tagName ? t.tagName.toUpperCase() : '';
+                        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+                            isEditable = true;
+                        } else if (t.isContentEditable) {
+                            isEditable = true;
+                        } else if (t.closest && t.closest("[contenteditable='true'], [contenteditable='']")) {
+                            isEditable = true;
+                        }
+                    }
+                    if (!isEditable) {
+                        e.preventDefault();
+                    }
+                }
+            }, true);
+            """,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        configuration.userContentController.addUserScript(backspaceScript)
+        let newWebView = BrowserWebView(frame: .zero, configuration: configuration)
         newWebView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
         self.webView = newWebView
         return newWebView
