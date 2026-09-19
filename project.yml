@@ -1,0 +1,23 @@
+name: isa
+options:
+  bundleIdPrefix: com.isa
+  deploymentTarget:
+    macOS: "14.0"
+targets:
+  isa:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources
+    settings:
+      base:
+        PRODUCT_NAME: isa
+        PRODUCT_BUNDLE_IDENTIFIER: com.isa.browser
+        INFOPLIST_KEY_CFBundleDisplayName: isa
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGN_IDENTITY: ""
+        ENABLE_HARDENED_RUNTIME: NO
