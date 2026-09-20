@@ -105,6 +105,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
 
+        if let icon = NSImage(named: "AppIcon")
+            ?? (Bundle.main.path(forResource: "AppIcon", ofType: "icns").flatMap { NSImage(contentsOfFile: $0) })
+            ?? (Bundle.main.path(forResource: "isa_browser", ofType: "png").flatMap { NSImage(contentsOfFile: $0) })
+            ?? NSImage(contentsOfFile: "Assets/AppIcon.icns")
+            ?? NSImage(contentsOfFile: "Assets/isa_browser.png") {
+            NSApp.applicationIconImage = icon
+        }
+
         if ProcessInfo.processInfo.arguments.contains("--run-perf-sequence") ||
            ProcessInfo.processInfo.arguments.contains("--open-tabs") ||
            ProcessInfo.processInfo.arguments.contains("--benchmark") ||
