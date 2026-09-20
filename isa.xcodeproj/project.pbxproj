@@ -22,7 +22,10 @@
 		D4356FC567DDF9244C71A270 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6D6C2DA623C79C993BEC85B /* ContentView.swift */; };
 		D6FAAA3115D275E76FA3CB85 /* back.svg in Resources */ = {isa = PBXBuildFile; fileRef = 91BB8B6F9E31DAD0ED03D68A /* back.svg */; };
 		E9636DAA3EBF1F919D9C988B /* ShortcutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A08E9252783AEF945D7C938 /* ShortcutsView.swift */; };
-		FD89C2DA18D8E9BAAFF593DA /* cosmetic-filters.json in Resources */ = {isa = PBXBuildFile; fileRef = 72261784DAB32E409CD0F35A /* cosmetic-filters.json */; };
+		AA11000123456789ABCDEF01 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB22000123456789ABCDEF01 /* DownloadManager.swift */; };
+		AA11000223456789ABCDEF02 /* DownloadsPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB22000223456789ABCDEF02 /* DownloadsPopoverView.swift */; };
+		AA11000323456789ABCDEF03 /* FindBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB22000323456789ABCDEF03 /* FindBarView.swift */; };
+		AA11000423456789ABCDEF04 /* FindManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB22000423456789ABCDEF04 /* FindManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +46,10 @@
 		F0A52A1F857D2F78C1C727B7 /* content-blocker.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "content-blocker.json"; sourceTree = "<group>"; };
 		F633ED0068EDAF6D7850773B /* HistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryManager.swift; sourceTree = "<group>"; };
 		FCFA86E23377365E7AD1051C /* AdBlockController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdBlockController.swift; sourceTree = "<group>"; };
+		BB22000123456789ABCDEF01 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
+		BB22000223456789ABCDEF02 /* DownloadsPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsPopoverView.swift; sourceTree = "<group>"; };
+		BB22000323456789ABCDEF03 /* FindBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindBarView.swift; sourceTree = "<group>"; };
+		BB22000423456789ABCDEF04 /* FindManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -57,6 +64,10 @@
 				7DCDF41A4FBF447C8ACDE379 /* ShortcutsManager.swift */,
 				2A08E9252783AEF945D7C938 /* ShortcutsView.swift */,
 				A6347A7548A0AB7642EBF924 /* WebView.swift */,
+				BB22000123456789ABCDEF01 /* DownloadManager.swift */,
+				BB22000223456789ABCDEF02 /* DownloadsPopoverView.swift */,
+				BB22000323456789ABCDEF03 /* FindBarView.swift */,
+				BB22000423456789ABCDEF04 /* FindManager.swift */,
 				C0E1124C8EA80C4A29730C3D /* Adblocker */,
 			);
 			path = Sources;
@@ -194,6 +205,10 @@
 				A35520F95DD2AC73636C943C /* ShortcutsManager.swift in Sources */,
 				E9636DAA3EBF1F919D9C988B /* ShortcutsView.swift in Sources */,
 				CE1833878057E0544DAEEE91 /* WebView.swift in Sources */,
+				AA11000123456789ABCDEF01 /* DownloadManager.swift in Sources */,
+				AA11000223456789ABCDEF02 /* DownloadsPopoverView.swift in Sources */,
+				AA11000323456789ABCDEF03 /* FindBarView.swift in Sources */,
+				AA11000423456789ABCDEF04 /* FindManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
