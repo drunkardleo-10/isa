@@ -40,8 +40,9 @@ struct WebView: NSViewRepresentable {
                 self.tab.snapshotImage = nil
                 self.tab.lastActiveTime = Date()
                 self.tab.currentURL = webView.url
-                if let title = webView.title, !title.isEmpty {
-                    self.tab.pageTitle = title
+                let rawTitle = webView.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !rawTitle.isEmpty {
+                    self.tab.pageTitle = rawTitle
                 }
                 self.tab.canGoBack = webView.canGoBack
                 self.tab.canGoForward = webView.canGoForward
@@ -55,7 +56,12 @@ struct WebView: NSViewRepresentable {
                 self.tab.lastActiveTime = Date()
                 self.tab.isLoading = false
                 self.tab.currentURL = webView.url
-                self.tab.pageTitle = webView.title ?? webView.url?.host ?? "Untitled"
+                let rawTitle = webView.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !rawTitle.isEmpty {
+                    self.tab.pageTitle = rawTitle
+                } else if self.tab.pageTitle.isEmpty {
+                    self.tab.pageTitle = webView.url?.host ?? "Untitled"
+                }
                 self.tab.canGoBack = webView.canGoBack
                 self.tab.canGoForward = webView.canGoForward
                 PerformanceMonitor.shared.log(event: "LoadFinish", details: "Loaded \"\(self.tab.pageTitle)\" in \(durationMs)ms")

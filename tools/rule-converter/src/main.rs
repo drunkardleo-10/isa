@@ -7,19 +7,38 @@ use std::time::Instant;
 use adblock::content_blocking::{ignore_previous_fp_documents, CbRule, CbRuleEquivalent};
 use adblock::filters::cosmetic::{CosmeticFilterMask, CosmeticFilterOperator};
 use adblock::lists::{parse_filters, ParseOptions, RuleTypes};
+use adblock::resources::{InMemoryResourceStorage, PermissionMask, Resource, ResourceStorage};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() < 4 {
-        eprintln!("Usage: rule-converter <content_blocker_json> <cosmetic_filters_json> <input_file1> [input_file2 ...]");
+    if args.len() < 6 {
+        eprintln!(
+            "Usage: rule-converter <content_blocker_json> <cosmetic_filters_json> <scriptlets_json> <resources_json> <input_file1> [input_file2 ...]"
+        );
         std::process::exit(1);
     }
 
     let cb_output_path = &args[1];
     let cosmetic_output_path = &args[2];
-    let input_paths = &args[3..];
+    let scriptlets_output_path = &args[3];
+    let resources_path = &args[4];
+    let input_paths = &args[5..];
 
     let start = Instant::now();
+
+    let res_file = File::open(resources_path).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to open resources file {}: {}", resources_path, e);
+        std::process::exit(1);
+    });
+    let resources: Vec<Resource> = serde_json::from_reader(BufReader::new(res_file)).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to deserialize resources JSON from {}: {}", resources_path, e);
+        std::process::exit(1);
+    });
+    println!("Loaded {} resources in {:?}", resources.len(), start.elapsed());
+    let storage = InMemoryResourceStorage::from_resources(resources);
+    let res_storage = ResourceStorage::from_backend(storage);
+
+    let load_start = Instant::now();
     let mut all_lines = Vec::new();
     for path in input_paths {
         let f = File::open(path).unwrap_or_else(|e| {
@@ -36,12 +55,11 @@ fn main() {
             }
         }
     }
-    println!("Loaded {} raw filter rules in {:?}", all_lines.len(), start.elapsed());
+    println!("Loaded {} raw filter rules in {:?}", all_lines.len(), load_start.elapsed());
 
     let parse_start = Instant::now();
     let mut opts = ParseOptions::default();
     opts.rule_types = RuleTypes::All;
-
 
     let (network_filters, cosmetic_filters) = parse_filters(all_lines.iter().map(|s| s.as_str()), true, opts);
     println!(
@@ -50,7 +68,6 @@ fn main() {
         cosmetic_filters.len(),
         parse_start.elapsed()
     );
-
 
     let convert_start = Instant::now();
     let mut cb_rules: Vec<CbRule> = Vec::new();
@@ -61,18 +78,68 @@ fn main() {
             }
         }
     }
-
     cb_rules.push(ignore_previous_fp_documents());
     println!("Converted to {} content blocking rules in {:?}", cb_rules.len(), convert_start.elapsed());
-
 
     let cosmetic_start = Instant::now();
     let mut domain_hide_map: HashMap<String, HashSet<String>> = HashMap::new();
     let mut domain_unhide_map: HashMap<String, HashSet<String>> = HashMap::new();
 
+    let mut domain_scriptlets_map: HashMap<String, Vec<String>> = HashMap::new();
+    let mut seen_scriptlets_by_domain: HashMap<String, HashSet<String>> = HashMap::new();
+
     for filter in &cosmetic_filters {
         let is_unhide = filter.mask.contains(CosmeticFilterMask::UNHIDE);
+        let is_scriptlet = filter.mask.contains(CosmeticFilterMask::SCRIPT_INJECT);
         let is_standard_hide = filter.mask.is_empty() && filter.action.is_none();
+
+        if is_scriptlet {
+            if let Some(raw) = &filter.raw_line {
+                let sep_pos = raw.find("##+js(").or_else(|| raw.find("#@#+js("));
+                if let Some(pos) = sep_pos {
+                    let domain_part = &raw[..pos];
+                    if !domain_part.is_empty() {
+                        let mut domains = Vec::new();
+                        for d in domain_part.split(',') {
+                            let d = d.trim().to_lowercase();
+                            if !d.is_empty() && !d.starts_with('~') {
+                                domains.push(d);
+                            }
+                        }
+
+                        let is_yt = domains.iter().any(|d| d == "youtube.com" || d.ends_with(".youtube.com"));
+                        if is_yt {
+                            for op in &filter.selector {
+                                if let CosmeticFilterOperator::CssSelector(args) = op {
+                                    let resolved = res_storage.get_scriptlet_resources(std::iter::once((
+                                        args.as_str(),
+                                        PermissionMask::from_bits(0xFF),
+                                    )));
+
+                                    if !resolved.is_empty() {
+
+                                        let mut target_domains = domains.clone();
+                                        if !target_domains.iter().any(|d| d == "youtube.com") {
+                                            target_domains.push("youtube.com".to_string());
+                                        }
+
+                                        for d in target_domains {
+                                            if d == "youtube.com" || d.ends_with(".youtube.com") {
+                                                let seen = seen_scriptlets_by_domain.entry(d.clone()).or_default();
+                                                if seen.insert(resolved.clone()) {
+                                                    domain_scriptlets_map.entry(d).or_default().push(resolved.clone());
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            continue;
+        }
 
         if !is_unhide && !is_standard_hide {
             continue;
@@ -141,6 +208,13 @@ fn main() {
         cosmetic_start.elapsed()
     );
 
+    let mut total_scriptlet_snippets = 0;
+    for (domain, snippets) in &domain_scriptlets_map {
+        total_scriptlet_snippets += snippets.len();
+        println!("Domain '{}' has {} resolved scriptlet snippets", domain, snippets.len());
+    }
+    println!("Extracted {} domain scriptlet entries with {} snippets", domain_scriptlets_map.len(), total_scriptlet_snippets);
+
     let write_start = Instant::now();
 
     let cb_file = File::create(cb_output_path).unwrap_or_else(|e| {
@@ -171,10 +245,25 @@ fn main() {
         std::process::exit(1);
     });
 
+    let scriptlets_file = File::create(scriptlets_output_path).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to create output file {}: {}", scriptlets_output_path, e);
+        std::process::exit(1);
+    });
+    let mut scriptlets_writer = BufWriter::new(scriptlets_file);
+    serde_json::to_writer(&mut scriptlets_writer, &domain_scriptlets_map).unwrap_or_else(|e| {
+        eprintln!("Error: Failed to serialize scriptlets: {}", e);
+        std::process::exit(1);
+    });
+    scriptlets_writer.flush().unwrap_or_else(|e| {
+        eprintln!("Error: Failed to flush {}: {}", scriptlets_output_path, e);
+        std::process::exit(1);
+    });
+
     println!(
-        "Wrote content blocker to {} and cosmetic filters to {} in {:?}",
+        "Wrote content blocker to {}, cosmetic filters to {}, scriptlets to {} in {:?}",
         cb_output_path,
         cosmetic_output_path,
+        scriptlets_output_path,
         write_start.elapsed()
     );
     println!("Rule conversion pipeline finished in {:?}", start.elapsed());

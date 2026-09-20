@@ -19,12 +19,16 @@ public final class AdBlockController {
     private var cosmeticRulesByDomain: [String: String] = [:]
     private var totalCosmeticSelectorsCount: Int = 17_166
     private var networkRuleCount: Int = 110_664
+    private var scriptletUserScript: WKUserScript?
+    private var scriptletsByDomain: [String: [String]] = [:]
+    private var totalScriptletSnippetsCount: Int = 0
     private var domainsWithRulesAppliedSession = Set<String>()
 
     public var isEnabled: Bool = true
 
     public init() {
         loadCosmeticFilterScript()
+        loadScriptletFilterScript()
         loadNetworkRuleCountAsync()
         startLoadingRuleListIfNeeded()
     }
@@ -43,6 +47,11 @@ public final class AdBlockController {
         if ProcessInfo.processInfo.environment["ISA_DISABLE_COSMETIC"] != "1",
            let cosmeticScript = cosmeticUserScript {
             configuration.userContentController.addUserScript(cosmeticScript)
+        }
+
+        if ProcessInfo.processInfo.environment["ISA_DISABLE_SCRIPTLETS"] != "1",
+           let scriptletScript = scriptletUserScript {
+            configuration.userContentController.addUserScript(scriptletScript)
         }
 
         
@@ -150,6 +159,86 @@ public final class AdBlockController {
             forMainFrameOnly: false
         )
         PerformanceMonitor.shared.log(event: "AdBlock", details: "Cosmetic filtering script loaded and compiled successfully")
+    }
+
+    private func loadScriptletFilterScript() {
+        let candidateURLs: [URL?] = [
+            Bundle.main.url(forResource: "scriptlets", withExtension: "json"),
+            Bundle.main.url(forResource: "scriptlets", withExtension: "json", subdirectory: "rules"),
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/scriptlets.json"),
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/rules/scriptlets.json"),
+            URL(fileURLWithPath: "rules/scriptlets.json"),
+            Bundle.main.bundleURL.appendingPathComponent("rules/scriptlets.json")
+        ]
+
+        guard let url = candidateURLs.compactMap({ $0 }).first(where: { FileManager.default.fileExists(atPath: $0.path) }),
+              let jsonString = try? String(contentsOf: url, encoding: .utf8),
+              !jsonString.isEmpty else {
+            PerformanceMonitor.shared.log(event: "AdBlock", details: "Scriptlets file not found or empty")
+            return
+        }
+
+        guard let data = jsonString.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: [String]] else {
+            PerformanceMonitor.shared.log(event: "AdBlock", details: "Failed to deserialize scriptlets JSON")
+            return
+        }
+
+        self.lock.lock()
+        self.scriptletsByDomain = dict
+        var totalSnippets = 0
+        for (_, snippets) in dict {
+            totalSnippets += snippets.count
+        }
+        self.totalScriptletSnippetsCount = totalSnippets
+        self.lock.unlock()
+
+        var snippetGlobalId = 0
+        var domainBranches = ""
+        for (domain, snippets) in dict {
+            let quotedDomain = domain.debugDescription
+            domainBranches += "            if (domain === \(quotedDomain)) {\n"
+            for snippet in snippets {
+                snippetGlobalId += 1
+                domainBranches += """
+                    if (!window.__isa_scriptlets_run__[\(snippetGlobalId)]) {
+                        window.__isa_scriptlets_run__[\(snippetGlobalId)] = true;
+                        try {
+                            \(snippet)
+                        } catch (e) {
+                            console.error("[isa-adblock] Scriptlet execution failed on " + \(quotedDomain), e);
+                        }
+                    }
+
+                """
+            }
+            domainBranches += "            }\n"
+        }
+
+        let jsSource = """
+        (function() {
+            if (window.__isa_scriptlets_applied__) return;
+            window.__isa_scriptlets_applied__ = true;
+            window.__isa_scriptlets_run__ = window.__isa_scriptlets_run__ || {};
+            var scriptletGlobals = {};
+
+            var hostname = (window.location && window.location.hostname) ? window.location.hostname.toLowerCase() : "";
+            if (!hostname) return;
+
+            var parts = hostname.split(".");
+            for (var i = 0; i < parts.length - 1; i++) {
+                var domain = parts.slice(i).join(".");
+        \(domainBranches)
+            }
+        })();
+        """
+
+        self.scriptletUserScript = WKUserScript(
+            source: jsSource,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        PerformanceMonitor.shared.log(event: "AdBlock", details: "Scriptlet injection script loaded successfully (\(totalSnippets) snippets across \(dict.count) domains)")
     }
 
     private func startLoadingRuleListIfNeeded() {
@@ -302,6 +391,16 @@ public final class AdBlockController {
 
     public static var totalRuleCounts: (network: Int, cosmetic: Int) {
         shared.totalRuleCounts
+    }
+
+    public var totalScriptletsCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return totalScriptletSnippetsCount
+    }
+
+    public static var totalScriptletsCount: Int {
+        shared.totalScriptletsCount
     }
 
     public func cosmeticRuleCount(for hostOrURL: String) -> Int {

@@ -54,11 +54,101 @@ final class Tab: Identifiable, ObservableObject {
     @Published var isAddressOverlayPresented: Bool = false
     @Published var favicon: NSImage? = nil
 
-    @Published var webView: WKWebView? = nil
+    @Published var webView: WKWebView? = nil {
+        didSet {
+            if let wv = webView {
+                setupObservations(for: wv)
+            } else {
+                invalidateObservations()
+            }
+        }
+    }
     @Published var snapshotImage: NSImage? = nil
     @Published var isSleeping: Bool = false
     @Published var isSnapshotting: Bool = false
     var lastActiveTime: Date = Date()
+
+    private var titleObservation: NSKeyValueObservation?
+    private var urlObservation: NSKeyValueObservation?
+    private var canGoBackObservation: NSKeyValueObservation?
+    private var canGoForwardObservation: NSKeyValueObservation?
+    private var loadingObservation: NSKeyValueObservation?
+
+    deinit {
+        invalidateObservations()
+    }
+
+    private func setupObservations(for webView: WKWebView) {
+        invalidateObservations()
+        titleObservation = webView.observe(\.title, options: [.initial, .new]) { [weak self] wv, _ in
+            guard let self = self else { return }
+            let rawTitle = wv.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !rawTitle.isEmpty {
+                DispatchQueue.main.async {
+                    if self.pageTitle != rawTitle {
+                        self.pageTitle = rawTitle
+                    }
+                }
+            }
+        }
+
+        urlObservation = webView.observe(\.url, options: [.new]) { [weak self] wv, _ in
+            guard let self = self else { return }
+            guard let newURL = wv.url else { return }
+            DispatchQueue.main.async {
+                if self.currentURL != newURL {
+                    let hostChanged = self.currentURL?.host != newURL.host
+                    self.currentURL = newURL
+                    if hostChanged {
+                        self.favicon = nil
+                    }
+                    if !self.isAddressOverlayPresented {
+                        self.addressText = newURL.absoluteString
+                    }
+                }
+            }
+        }
+
+        canGoBackObservation = webView.observe(\.canGoBack, options: [.initial, .new]) { [weak self] wv, _ in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                if self.canGoBack != wv.canGoBack {
+                    self.canGoBack = wv.canGoBack
+                }
+            }
+        }
+
+        canGoForwardObservation = webView.observe(\.canGoForward, options: [.initial, .new]) { [weak self] wv, _ in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                if self.canGoForward != wv.canGoForward {
+                    self.canGoForward = wv.canGoForward
+                }
+            }
+        }
+
+        loadingObservation = webView.observe(\.isLoading, options: [.new]) { [weak self] wv, _ in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                if self.isLoading != wv.isLoading {
+                    self.isLoading = wv.isLoading
+                }
+            }
+        }
+    }
+
+    private func invalidateObservations() {
+        titleObservation?.invalidate()
+        titleObservation = nil
+        urlObservation?.invalidate()
+        urlObservation = nil
+        canGoBackObservation?.invalidate()
+        canGoBackObservation = nil
+        canGoForwardObservation?.invalidate()
+        canGoForwardObservation = nil
+        loadingObservation?.invalidate()
+        loadingObservation = nil
+    }
 
     var isNewTabState: Bool {
         currentURL == nil
@@ -107,6 +197,7 @@ final class Tab: Identifiable, ObservableObject {
         let newWebView = BrowserWebView(frame: .zero, configuration: configuration)
         newWebView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
         self.webView = newWebView
+        setupObservations(for: newWebView)
         return newWebView
     }
 
