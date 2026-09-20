@@ -75,6 +75,7 @@ final class Tab: Identifiable, ObservableObject {
         let preferences = WKWebpagePreferences()
         preferences.preferredContentMode = .desktop
         configuration.defaultWebpagePreferences = preferences
+        configuration.preferences.isElementFullscreenEnabled = true
         configuration.applicationNameForUserAgent = "Version/18.0 Safari/605.1.15"
         let backspaceScript = WKUserScript(
             source: """
