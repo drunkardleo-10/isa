@@ -69,15 +69,102 @@ final class PerformanceMonitor {
         return 0.0
     }
 
+    private let monitorQueue = DispatchQueue(label: "org.isa.perf-monitor", qos: .utility)
+    private var cachedWebKitRSSMB: Double = 0.0
+    private var cachedWebKitProcessCount: Int = 0
+    private var lastWebKitQueryTime: CFAbsoluteTime = 0
+
+    var webKitHelperRSSMB: Double {
+        refreshWebKitMemoryIfNeeded()
+        return cachedWebKitRSSMB
+    }
+
+    var webKitProcessCount: Int {
+        refreshWebKitMemoryIfNeeded()
+        return cachedWebKitProcessCount
+    }
+
+    var totalCombinedRSSMB: Double {
+        return ramUsageMB + webKitHelperRSSMB
+    }
+
+    private func refreshWebKitMemoryIfNeeded() {
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastWebKitQueryTime >= 2.0 else { return }
+        lastWebKitQueryTime = now
+        queryWebKitMemory()
+    }
+
+    func queryWebKitMemory() {
+        let p1 = Process()
+        p1.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        p1.arguments = ["-c", "com.apple.WebKit"]
+        let pipe1 = Pipe()
+        p1.standardOutput = pipe1
+        p1.standardError = Pipe()
+        do {
+            try p1.run()
+        } catch {
+            return
+        }
+        let data1 = pipe1.fileHandleForReading.readDataToEndOfFile()
+        p1.waitUntilExit()
+        guard let str1 = String(data: data1, encoding: .utf8) else { return }
+
+        var pids = Set<String>()
+        for line in str1.components(separatedBy: .newlines) {
+            if line.contains("/isa/") {
+                let parts = line.split(whereSeparator: { $0.isWhitespace })
+                if parts.count >= 2 {
+                    pids.insert(String(parts[1]))
+                }
+            }
+        }
+
+        guard !pids.isEmpty else {
+            self.cachedWebKitRSSMB = 0.0
+            self.cachedWebKitProcessCount = 0
+            return
+        }
+
+        let p2 = Process()
+        p2.executableURL = URL(fileURLWithPath: "/bin/ps")
+        p2.arguments = ["-o", "rss=", "-p", pids.joined(separator: ",")]
+        let pipe2 = Pipe()
+        p2.standardOutput = pipe2
+        p2.standardError = Pipe()
+        do {
+            try p2.run()
+        } catch {
+            return
+        }
+        let data2 = pipe2.fileHandleForReading.readDataToEndOfFile()
+        p2.waitUntilExit()
+        guard let str2 = String(data: data2, encoding: .utf8) else { return }
+
+        var totalKB = 0.0
+        for line in str2.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if let kb = Double(trimmed) {
+                totalKB += kb
+            }
+        }
+        self.cachedWebKitRSSMB = totalKB / 1024.0
+        self.cachedWebKitProcessCount = pids.count
+    }
+
     func log(event: String, details: String? = nil) {
         guard isEnabled else { return }
-        let ramStr = String(format: "%.1f MB", ramUsageMB)
+        refreshWebKitMemoryIfNeeded()
+        let totalStr = String(format: "%.1f MB", totalCombinedRSSMB)
+        let hostStr = String(format: "%.1f MB", ramUsageMB)
+        let webKitStr = String(format: "%.1f MB (%d procs)", cachedWebKitRSSMB, cachedWebKitProcessCount)
         let footStr = String(format: "%.1f MB", physicalFootprintMB)
         let gpuStr = gpuUtilization.map { "\(Int($0))%" } ?? "N/A"
         if let details = details {
-            print("[isa] [\(event)] \(details) | RSS: \(ramStr) | Footprint: \(footStr) | GPU: \(gpuStr)")
+            print("[isa] [\(event)] \(details) | Total RSS: \(totalStr) (Host: \(hostStr), WebKit: \(webKitStr)) | Footprint: \(footStr) | GPU: \(gpuStr)")
         } else {
-            print("[isa] [\(event)] RSS: \(ramStr) | Footprint: \(footStr) | GPU: \(gpuStr)")
+            print("[isa] [\(event)] Total RSS: \(totalStr) (Host: \(hostStr), WebKit: \(webKitStr)) | Footprint: \(footStr) | GPU: \(gpuStr)")
         }
     }
 
@@ -88,6 +175,16 @@ final class PerformanceMonitor {
             guard let self = self else { return }
             let tabs = tabCountProvider()
             self.log(event: "Perf", details: "Active Tabs: \(tabs)")
+        }
+    }
+
+    func startPeriodicLogging(statsProvider: @escaping () -> String) {
+        guard isEnabled else { return }
+        guard timer == nil else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            let stats = statsProvider()
+            self.log(event: "Perf", details: stats)
         }
     }
 }
