@@ -118,9 +118,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func runPerfSequence() {
         guard let vm = viewModel else { return }
         vm.openSampleTabs(count: 25, delayPerTab: 3.0) {
-            if ProcessInfo.processInfo.arguments.contains("--exit-on-finish") {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                    exit(0)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                let sleepingTabs = vm.tabs.filter { $0.isSleeping }
+                if let first = sleepingTabs.first {
+                    vm.selectTab(id: first.id)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    if sleepingTabs.count > 1 {
+                        vm.selectTab(id: sleepingTabs[1].id)
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        if let first = sleepingTabs.first {
+                            vm.selectTab(id: first.id)
+                        }
+                        if ProcessInfo.processInfo.arguments.contains("--exit-on-finish") {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                exit(0)
+                            }
+                        }
+                    }
                 }
             }
         }

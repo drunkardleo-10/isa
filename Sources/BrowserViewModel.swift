@@ -121,6 +121,8 @@ final class Tab: Identifiable, ObservableObject {
     @Published var snapshotImage: NSImage? = nil
     @Published var isSleeping: Bool = false
     @Published var isSnapshotting: Bool = false
+    @Published var isReloading: Bool = false
+    var savedScrollY: CGFloat = 0
     var lastActiveTime: Date = Date()
 
     private var titleObservation: NSKeyValueObservation?
@@ -317,6 +319,7 @@ final class BrowserViewModel: ObservableObject {
     private var sleepMaintenanceTimer: Timer?
     private let sleepTimeoutInterval: TimeInterval = 600 
     private let tabThresholdForSleep: Int = 6 
+    private let sleepGracePeriod: TimeInterval = 300
 
     var activeTab: Tab {
         if let tab = tabs.first(where: { $0.id == selectedTabId }) {
@@ -527,6 +530,7 @@ final class BrowserViewModel: ObservableObject {
         func loadStep() {
             guard index < targetSites.count else {
                 self.isBenchmarkRunning = false
+                self.checkTabSleeping()
                 PerformanceMonitor.shared.log(event: "BenchmarkComplete", details: "All \(targetSites.count) benchmark tabs loaded (Total: \(self.tabs.count))")
                 onComplete?()
                 return
@@ -715,20 +719,32 @@ final class BrowserViewModel: ObservableObject {
 
         tab.isSnapshotting = true
         tab.findState.dismiss()
-        webView.takeSnapshot(with: nil) { [weak self, weak tab] image, error in
-            DispatchQueue.main.async {
-                guard let self = self, let tab = tab else { return }
-                tab.isSnapshotting = false
 
-                
-                guard tab.id != self.selectedTabId else { return }
+        let config = WKSnapshotConfiguration()
+        config.snapshotWidth = NSNumber(value: 300)
 
-                tab.snapshotImage = image
-                tab.isSleeping = true
-                
-                tab.webView = nil
-                let title = tab.pageTitle.isEmpty ? (tab.currentURL?.host ?? "Tab") : tab.pageTitle
-                PerformanceMonitor.shared.log(event: "Sleep", details: "Tab \"\(title)\" put to sleep")
+        webView.takeSnapshot(with: config) { [weak self, weak tab, weak webView] image, error in
+            guard let webView = webView else {
+                DispatchQueue.main.async { tab?.isSnapshotting = false }
+                return
+            }
+
+            webView.evaluateJavaScript("window.scrollY") { [weak self, weak tab] result, _ in
+                DispatchQueue.main.async {
+                    guard let self = self, let tab = tab else { return }
+                    tab.isSnapshotting = false
+
+                    guard tab.id != self.selectedTabId else { return }
+
+                    tab.savedScrollY = (result as? CGFloat) ?? CGFloat((result as? Double) ?? 0)
+                    tab.snapshotImage = image
+                    tab.isSleeping = true
+                    tab.webView = nil
+
+                    let title = tab.pageTitle.isEmpty ? (tab.currentURL?.host ?? "Tab") : tab.pageTitle
+                    let snapshotKB = (image?.tiffRepresentation?.count ?? 0) / 1024
+                    PerformanceMonitor.shared.log(event: "Sleep", details: "Tab \"\(title)\" put to sleep | snapshot: \(snapshotKB)KB | scrollY: \(Int(tab.savedScrollY))")
+                }
             }
         }
     }
@@ -740,6 +756,7 @@ final class BrowserViewModel: ObservableObject {
         let title = tab.pageTitle.isEmpty ? (tab.currentURL?.host ?? "Tab") : tab.pageTitle
         PerformanceMonitor.shared.log(event: "Wake", details: "Waking tab \"\(title)\"")
         tab.isSleeping = false
+        tab.isReloading = true
         let webView = tab.ensureWebView()
         if let url = tab.currentURL {
             webView.load(URLRequest(url: url))
@@ -758,16 +775,15 @@ final class BrowserViewModel: ObservableObject {
             $0.currentURL != nil
         }
 
-        
         for tab in backgroundTabs {
             if now.timeIntervalSince(tab.lastActiveTime) >= sleepTimeoutInterval {
                 sleepTab(tab)
             }
         }
 
-        
         if tabs.count >= tabThresholdForSleep {
             let eligible = backgroundTabs
+                .filter { now.timeIntervalSince($0.lastActiveTime) >= sleepGracePeriod }
                 .sorted { $0.lastActiveTime < $1.lastActiveTime }
             for tab in eligible {
                 let activeLiveCount = tabs.filter { $0.webView != nil }.count

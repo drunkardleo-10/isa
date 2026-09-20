@@ -145,6 +145,21 @@ struct WebView: NSViewRepresentable {
                 if let host = webView.url?.host {
                     AdBlockController.recordNavigation(for: host)
                 }
+
+                if self.tab.isReloading {
+                    let scrollY = self.tab.savedScrollY
+                    if scrollY > 0 {
+                        webView.evaluateJavaScript("window.scrollTo(0, \(scrollY))") { _, _ in
+                            DispatchQueue.main.async {
+                                self.tab.isReloading = false
+                                self.tab.savedScrollY = 0
+                            }
+                        }
+                    } else {
+                        self.tab.isReloading = false
+                        self.tab.savedScrollY = 0
+                    }
+                }
             }
             fetchFavicon(for: webView)
         }
@@ -188,6 +203,7 @@ struct WebView: NSViewRepresentable {
 final class TabContainerView: NSView {
     private weak var currentWebView: WKWebView?
     private var imageView: NSImageView?
+    private var reloadingLabel: NSTextField?
 
     func update(tab: Tab, coordinator: WebView.Coordinator) {
         if let webView = tab.webView {
@@ -195,16 +211,23 @@ final class TabContainerView: NSView {
                 subviews.forEach { $0.removeFromSuperview() }
                 currentWebView = webView
                 imageView = nil
+                reloadingLabel = nil
                 webView.navigationDelegate = coordinator
                 webView.uiDelegate = coordinator
                 webView.autoresizingMask = [.width, .height]
                 webView.frame = bounds
                 addSubview(webView)
             }
+            if tab.isReloading && tab.snapshotImage != nil {
+                showReloadingOverlay()
+            } else {
+                removeReloadingOverlay()
+            }
         } else if let snapshot = tab.snapshotImage {
             if currentWebView != nil || imageView?.image !== snapshot {
                 subviews.forEach { $0.removeFromSuperview() }
                 currentWebView = nil
+                reloadingLabel = nil
                 let iv = NSImageView(frame: bounds)
                 iv.image = snapshot
                 iv.imageScaling = .scaleAxesIndependently
@@ -217,8 +240,29 @@ final class TabContainerView: NSView {
                 subviews.forEach { $0.removeFromSuperview() }
                 currentWebView = nil
                 imageView = nil
+                reloadingLabel = nil
             }
         }
+    }
+
+    private func showReloadingOverlay() {
+        guard reloadingLabel == nil else { return }
+        let label = NSTextField(labelWithString: "Reloading\u{2026}")
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        label.textColor = .secondaryLabelColor
+        label.backgroundColor = .windowBackgroundColor.withAlphaComponent(0.85)
+        label.isBezeled = false
+        label.isEditable = false
+        label.sizeToFit()
+        label.frame.origin = NSPoint(x: 12, y: bounds.height - label.frame.height - 12)
+        label.autoresizingMask = [.maxXMargin, .minYMargin]
+        addSubview(label)
+        reloadingLabel = label
+    }
+
+    private func removeReloadingOverlay() {
+        reloadingLabel?.removeFromSuperview()
+        reloadingLabel = nil
     }
 }
 
