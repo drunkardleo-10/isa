@@ -19,12 +19,43 @@ struct WebView: NSViewRepresentable {
         nsView.update(tab: tab, coordinator: context.coordinator)
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         var tab: Tab
         private var navigationStartTime: CFAbsoluteTime = 0
 
         init(tab: Tab) {
             self.tab = tab
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if navigationAction.targetFrame == nil {
+                if let url = navigationAction.request.url, !url.absoluteString.isEmpty {
+                    DispatchQueue.main.async {
+                        self.tab.onOpenNewTab?(url)
+                    }
+                }
+                decisionHandler(.cancel)
+                return
+            }
+            if navigationAction.navigationType == .linkActivated && (navigationAction.modifierFlags.contains(.command) || navigationAction.buttonNumber == 2) {
+                if let url = navigationAction.request.url, !url.absoluteString.isEmpty {
+                    DispatchQueue.main.async {
+                        self.tab.onOpenNewTab?(url)
+                    }
+                    decisionHandler(.cancel)
+                    return
+                }
+            }
+            decisionHandler(.allow)
+        }
+
+        func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+            if let url = navigationAction.request.url, !url.absoluteString.isEmpty {
+                DispatchQueue.main.async {
+                    self.tab.onOpenNewTab?(url)
+                }
+            }
+            return nil
         }
 
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
@@ -119,6 +150,7 @@ final class TabContainerView: NSView {
                 currentWebView = webView
                 imageView = nil
                 webView.navigationDelegate = coordinator
+                webView.uiDelegate = coordinator
                 webView.autoresizingMask = [.width, .height]
                 webView.frame = bounds
                 addSubview(webView)

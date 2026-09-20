@@ -43,8 +43,25 @@ final class BrowserWebView: WKWebView {
     }
 }
 
+final class TabScriptHandler: NSObject, WKScriptMessageHandler {
+    weak var tab: Tab?
+
+    init(tab: Tab) {
+        self.tab = tab
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == "openNewTab", let str = message.body as? String, let url = URL(string: str) {
+            DispatchQueue.main.async {
+                self.tab?.onOpenNewTab?(url)
+            }
+        }
+    }
+}
+
 final class Tab: Identifiable, ObservableObject {
     let id: UUID = UUID()
+    var onOpenNewTab: ((URL) -> Void)?
     @Published var addressText: String = ""
     @Published var currentURL: URL? = nil
     @Published var pageTitle: String = ""
@@ -193,6 +210,23 @@ final class Tab: Identifiable, ObservableObject {
             forMainFrameOnly: false
         )
         configuration.userContentController.addUserScript(backspaceScript)
+        configuration.userContentController.add(TabScriptHandler(tab: self), name: "openNewTab")
+        let linkClickScript = WKUserScript(
+            source: """
+            window.addEventListener('auxclick', function(e) {
+                if (e.button === 1) {
+                    var a = e.target.closest('a');
+                    if (a && a.href && !a.href.startsWith('javascript:')) {
+                        e.preventDefault();
+                        window.webkit.messageHandlers.openNewTab.postMessage(a.href);
+                    }
+                }
+            }, true);
+            """,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        configuration.userContentController.addUserScript(linkClickScript)
         AdBlockController.apply(to: configuration)
         let newWebView = BrowserWebView(frame: .zero, configuration: configuration)
         newWebView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
@@ -272,6 +306,9 @@ final class BrowserViewModel: ObservableObject {
     func bindTabs() {
         tabCancellables.removeAll()
         for tab in tabs {
+            tab.onOpenNewTab = { [weak self] url in
+                self?.createNewTab(with: url, select: false)
+            }
             tab.objectWillChange
                 .sink { [weak self] _ in
                     self?.objectWillChange.send()
@@ -311,6 +348,21 @@ final class BrowserViewModel: ObservableObject {
         }
         bindTabs()
         PerformanceMonitor.shared.log(event: "Tab", details: "Created new tab \(newTab.id.uuidString.prefix(6)) (Total: \(tabs.count)) | webView: \(newTab.webView != nil ? "INSTANTIATED" : "nil")")
+        checkTabSleeping()
+    }
+
+    func createNewTab(with url: URL, select: Bool = true) {
+        if select {
+            activeTab.lastActiveTime = Date()
+        }
+        let newTab = Tab(url: url)
+        withAnimation(.easeOut(duration: 0.2)) {
+            tabs.append(newTab)
+            if select {
+                selectedTabId = newTab.id
+            }
+        }
+        bindTabs()
         checkTabSleeping()
     }
 
