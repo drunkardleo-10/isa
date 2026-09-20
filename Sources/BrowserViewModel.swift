@@ -35,8 +35,43 @@ enum AppTheme: String, CaseIterable {
 }
 
 final class BrowserWebView: WKWebView {
+    weak var tab: Tab?
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.keyCode == 51 && event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let isCmd = flags.contains(.command) && !flags.contains(.control) && !flags.contains(.option)
+        let chars = event.charactersIgnoringModifiers?.lowercased()
+        let isF = (chars == "f") || event.keyCode == 3
+        let isG = (chars == "g") || event.keyCode == 5
+
+        if isCmd && isF && !flags.contains(.shift) {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, let tab = self.tab else { return }
+                if tab.isFindPresented {
+                    tab.findState.dismiss()
+                } else {
+                    tab.findState.show()
+                }
+                tab.objectWillChange.send()
+            }
+            return true
+        }
+
+        if isCmd && isG {
+            if flags.contains(.shift) {
+                DispatchQueue.main.async { [weak self] in
+                    self?.tab?.findState.findPrevious()
+                }
+                return true
+            } else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.tab?.findState.findNext()
+                }
+                return true
+            }
+        }
+
+        if event.keyCode == 51 && flags.isEmpty {
             return false
         }
         return super.performKeyEquivalent(with: event)
@@ -69,7 +104,10 @@ final class Tab: Identifiable, ObservableObject {
     @Published var canGoBack: Bool = false
     @Published var canGoForward: Bool = false
     @Published var isAddressOverlayPresented: Bool = false
+    @Published var isFindPresented: Bool = false
     @Published var favicon: NSImage? = nil
+    let findState: TabFindState
+    private var findCancellable: AnyCancellable?
 
     @Published var webView: WKWebView? = nil {
         didSet {
@@ -229,6 +267,7 @@ final class Tab: Identifiable, ObservableObject {
         configuration.userContentController.addUserScript(linkClickScript)
         AdBlockController.apply(to: configuration)
         let newWebView = BrowserWebView(frame: .zero, configuration: configuration)
+        newWebView.tab = self
         newWebView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
         self.webView = newWebView
         setupObservations(for: newWebView)
@@ -236,6 +275,12 @@ final class Tab: Identifiable, ObservableObject {
     }
 
     init(url: URL? = nil, lazy: Bool = false) {
+        let find = TabFindState()
+        self.findState = find
+        find.tab = self
+        self.findCancellable = find.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
         PerformanceMonitor.shared.log(event: "TabInit", details: "Tab \(id.uuidString.prefix(6)) initialized (url: \(url?.absoluteString ?? "nil")) | webView is \(url != nil && !lazy ? "eager" : "NIL")")
         if let url = url {
             self.addressText = url.absoluteString
@@ -394,6 +439,7 @@ final class BrowserViewModel: ObservableObject {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
 
         if tabs.count == 1 {
+            tabs[0].findState.dismiss()
             let freshTab = Tab()
             withAnimation(.easeInOut(duration: 0.2)) {
                 tabs = [freshTab]
@@ -410,6 +456,7 @@ final class BrowserViewModel: ObservableObject {
                 selectedTabId = tabs[nextIndex].id
                 wakeTabIfNeeded(activeTab)
             }
+            tabs[index].findState.dismiss()
             _ = tabs.remove(at: index)
         }
         bindTabs()
@@ -619,6 +666,38 @@ final class BrowserViewModel: ObservableObject {
         activeTab.webView?.load(URLRequest(url: URL(string: "about:blank")!))
     }
 
+    func toggleFindInPage() {
+        if activeTab.isFindPresented {
+            hideFindInPage()
+        } else {
+            showFindInPage()
+        }
+    }
+
+    func showFindInPage() {
+        withAnimation(.easeOut(duration: 0.18)) {
+            activeTab.isFindPresented = true
+        }
+        objectWillChange.send()
+        activeTab.findState.show()
+    }
+
+    func hideFindInPage() {
+        withAnimation(.easeOut(duration: 0.18)) {
+            activeTab.isFindPresented = false
+        }
+        objectWillChange.send()
+        activeTab.findState.dismiss()
+    }
+
+    func findNextInPage() {
+        activeTab.findState.findNext()
+    }
+
+    func findPreviousInPage() {
+        activeTab.findState.findPrevious()
+    }
+
     
 
     
@@ -635,6 +714,7 @@ final class BrowserViewModel: ObservableObject {
         }
 
         tab.isSnapshotting = true
+        tab.findState.dismiss()
         webView.takeSnapshot(with: nil) { [weak self, weak tab] image, error in
             DispatchQueue.main.async {
                 guard let self = self, let tab = tab else { return }

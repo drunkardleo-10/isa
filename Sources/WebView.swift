@@ -28,6 +28,20 @@ struct WebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if navigationAction.shouldPerformDownload {
+                print("[isa] [Download] navigationAction.shouldPerformDownload == true for \(navigationAction.request.url?.absoluteString ?? "")")
+                decisionHandler(.download)
+                return
+            }
+            if let url = navigationAction.request.url {
+                let ext = url.pathExtension.lowercased()
+                let downloadExtensions: Set<String> = ["zip", "dmg", "pkg", "iso", "tar", "gz", "tgz", "7z", "rar", "exe", "bin", "dat"]
+                if downloadExtensions.contains(ext) {
+                    print("[isa] [Download] Navigation triggered download by file extension: .\(ext) (\(url.absoluteString))")
+                    decisionHandler(.download)
+                    return
+                }
+            }
             if navigationAction.targetFrame == nil {
                 if let url = navigationAction.request.url, !url.absoluteString.isEmpty {
                     DispatchQueue.main.async {
@@ -47,6 +61,34 @@ struct WebView: NSViewRepresentable {
                 }
             }
             decisionHandler(.allow)
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+            if let httpResponse = navigationResponse.response as? HTTPURLResponse {
+                if let disposition = httpResponse.value(forHTTPHeaderField: "Content-Disposition"),
+                   disposition.lowercased().contains("attachment") {
+                    print("[isa] [Download] Content-Disposition: attachment detected for \(httpResponse.url?.absoluteString ?? "")")
+                    decisionHandler(.download)
+                    return
+                }
+            }
+            if !navigationResponse.canShowMIMEType {
+                print("[isa] [Download] WKWebView cannot show MIME type '\(navigationResponse.response.mimeType ?? "unknown")'. Triggering download...")
+                decisionHandler(.download)
+                return
+            }
+            decisionHandler(.allow)
+        }
+
+        func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+            print("[isa] [Download] WKNavigationAction didBecome WKDownload: \(download.originalRequest?.url?.absoluteString ?? "")")
+            DownloadManager.shared.register(download: download)
+        }
+
+        func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+            let suggestedFilename = navigationResponse.response.suggestedFilename
+            print("[isa] [Download] WKNavigationResponse didBecome WKDownload: suggestedFilename='\(suggestedFilename ?? "none")'")
+            DownloadManager.shared.register(download: download, suggestedFilename: suggestedFilename)
         }
 
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {

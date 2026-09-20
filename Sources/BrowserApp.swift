@@ -77,6 +77,23 @@ struct BrowserApp: App {
                 .keyboardShortcut("]", modifiers: .command)
                 .disabled(!viewModel.activeTab.canGoForward)
             }
+
+            CommandMenu("Find") {
+                Button("Find in Page…") {
+                    viewModel.toggleFindInPage()
+                }
+                .keyboardShortcut("f", modifiers: .command)
+
+                Button("Find Next") {
+                    viewModel.findNextInPage()
+                }
+                .keyboardShortcut("g", modifiers: .command)
+
+                Button("Find Previous") {
+                    viewModel.findPreviousInPage()
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+            }
         }
     }
 }

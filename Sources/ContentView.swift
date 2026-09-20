@@ -10,6 +10,9 @@ struct ContentView: View {
     @State private var dragInitialIndex: Int? = nil
     @State private var dragTargetIndex: Int? = nil
     @State private var isShieldPopoverPresented: Bool = false
+    @State private var isDownloadsPopoverPresented: Bool = false
+    @State private var keyMonitor: Any? = nil
+    @ObservedObject private var downloadManager: DownloadManager = DownloadManager.shared
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -17,18 +20,20 @@ struct ContentView: View {
                 topBar
                     .zIndex(10)
 
-                ZStack {
+                ZStack(alignment: .bottom) {
                     Color(nsColor: .windowBackgroundColor)
 
                     ForEach(viewModel.tabs) { tab in
                         if !tab.isNewTabState || tab.webView != nil || tab.isSleeping {
                             WebView(tab: tab)
                                 .opacity(tab.id == viewModel.selectedTabId && !tab.isNewTabState ? 1 : 0)
-                                .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isNewTabState && !tab.isAddressOverlayPresented && !isShieldPopoverPresented)
+                                .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isNewTabState && !tab.isAddressOverlayPresented && !isShieldPopoverPresented && !isDownloadsPopoverPresented)
                         }
                     }
 
                     ActiveTabOverlayView(tab: viewModel.activeTab, viewModel: viewModel)
+
+                    FindBarOverlay(tab: viewModel.activeTab)
                 }
             }
 
@@ -52,9 +57,36 @@ struct ContentView: View {
                     ))
                     .zIndex(100)
             }
+
+            if isDownloadsPopoverPresented {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.10)) {
+                            isDownloadsPopoverPresented = false
+                        }
+                    }
+                    .zIndex(90)
+
+                DownloadsPopoverView(downloadManager: downloadManager)
+                    .padding(.top, 36)
+                    .padding(.trailing, 12)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.95, anchor: .topTrailing).combined(with: .opacity),
+                        removal: .scale(scale: 0.95, anchor: .topTrailing).combined(with: .opacity)
+                    ))
+                    .zIndex(100)
+            }
         }
         .onExitCommand {
-            if isShieldPopoverPresented {
+            if viewModel.activeTab.isFindPresented {
+                viewModel.hideFindInPage()
+            } else if isDownloadsPopoverPresented {
+                withAnimation(.easeOut(duration: 0.10)) {
+                    isDownloadsPopoverPresented = false
+                }
+            } else if isShieldPopoverPresented {
                 withAnimation(.easeOut(duration: 0.10)) {
                     isShieldPopoverPresented = false
                 }
@@ -62,7 +94,32 @@ struct ContentView: View {
         }
         .onAppear {
             PerformanceMonitor.shared.log(event: "WindowReady", details: "Window content rendered on screen")
+            if keyMonitor == nil {
+                keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                    let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                    let chars = event.charactersIgnoringModifiers?.lowercased()
+                    let isCmd = flags.contains(.command) && !flags.contains(.control) && !flags.contains(.option)
+                    let isF = (chars == "f") || event.keyCode == 3
+                    let isG = (chars == "g") || event.keyCode == 5
+
+                    if isCmd && isF && !flags.contains(.shift) {
+                        viewModel.toggleFindInPage()
+                        return nil
+                    }
+                    if isCmd && isG {
+                        if flags.contains(.shift) {
+                            viewModel.findPreviousInPage()
+                        } else {
+                            viewModel.findNextInPage()
+                        }
+                        return nil
+                    }
+                    return event
+                }
+            }
         }
+        .onReceive(downloadManager.objectWillChange) { _ in }
+        .onReceive(viewModel.activeTab.objectWillChange) { _ in }
         .ignoresSafeArea(.all, edges: .top)
         .background(Color(nsColor: .windowBackgroundColor))
         .background(WindowAccessor(theme: viewModel.theme))
@@ -100,6 +157,9 @@ struct ContentView: View {
                 PerformanceMonitor.shared.log(event: "Click", details: "AdBlock shield popover toggle")
                 withAnimation(.spring(response: 0.18, dampingFraction: 0.85)) {
                     isShieldPopoverPresented.toggle()
+                    if isShieldPopoverPresented {
+                        isDownloadsPopoverPresented = false
+                    }
                 }
             }) {
                 Image(systemName: "checkmark.shield")
@@ -110,6 +170,41 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             .help("Ad & Tracker Protection")
+
+            if downloadManager.shouldShowTopBarButton {
+                Button(action: {
+                    PerformanceMonitor.shared.log(event: "Click", details: "Downloads popover toggle")
+                    withAnimation(.spring(response: 0.18, dampingFraction: 0.85)) {
+                        isDownloadsPopoverPresented.toggle()
+                        if isDownloadsPopoverPresented {
+                            downloadManager.hasUnreadCompletion = false
+                            isShieldPopoverPresented = false
+                        }
+                    }
+                }) {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "arrow.down.circle")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(isDownloadsPopoverPresented ? .primary : (downloadManager.hasActiveDownloads ? .accentColor : .secondary))
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+
+                        if downloadManager.hasActiveDownloads {
+                            Circle()
+                                .fill(Color.accentColor)
+                                .frame(width: 5, height: 5)
+                                .offset(x: -3, y: 4)
+                        } else if downloadManager.hasUnreadCompletion {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 5, height: 5)
+                                .offset(x: -3, y: 4)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .help("Downloads")
+            }
 
             Button(action: {
                 PerformanceMonitor.shared.log(event: "Click", details: "Theme toggle button (Current: \(viewModel.theme.rawValue))")
@@ -1172,6 +1267,22 @@ enum AssetLoader {
             }
         }
         return nil
+    }
+}
+
+struct FindBarOverlay: View {
+    @ObservedObject var tab: Tab
+
+    var body: some View {
+        ZStack {
+            if tab.isFindPresented {
+                FindBarView(findState: tab.findState)
+                    .padding(.bottom, 16)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .bottom)))
+                    .zIndex(50)
+            }
+        }
+        .animation(.easeOut(duration: 0.18), value: tab.isFindPresented)
     }
 }
 
