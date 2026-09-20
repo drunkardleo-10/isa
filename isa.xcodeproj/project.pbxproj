@@ -9,14 +9,18 @@
 /* Begin PBXBuildFile section */
 		09EB134DA3A87B4FF18C5A46 /* BrowserApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A2C691A1D2C45FCE3AF7760 /* BrowserApp.swift */; };
 		0AC724332C38C09C3947F4A7 /* PerformanceMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA9867D2DC69FD0595345C1F /* PerformanceMonitor.swift */; };
+		18CECF81E2F415A5079FBF21 /* home.svg in Resources */ = {isa = PBXBuildFile; fileRef = 700B59D84A0CDB7D7762F1D3 /* home.svg */; };
+		2C1D5953FD6A3BBF4C07A068 /* forward.svg in Resources */ = {isa = PBXBuildFile; fileRef = 9F6A13D7569E2BCF516C073A /* forward.svg */; };
 		2E9935927389BC58B3C79634 /* BrowserViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE843F5CEBEB649CA5A2E830 /* BrowserViewModel.swift */; };
 		455AF9614672E328419D9FD9 /* HistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F633ED0068EDAF6D7850773B /* HistoryManager.swift */; };
 		4EEA959AC96C786DCE929A72 /* content-blocker.json in Resources */ = {isa = PBXBuildFile; fileRef = F0A52A1F857D2F78C1C727B7 /* content-blocker.json */; };
+		59F91C1365AD69A23C4D6FC6 /* reload.svg in Resources */ = {isa = PBXBuildFile; fileRef = CCF736D58D4B1B9DD78B6DC7 /* reload.svg */; };
 		78FD3D3F6111BD300BA2D66C /* AdBlockController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCFA86E23377365E7AD1051C /* AdBlockController.swift */; };
 		A35520F95DD2AC73636C943C /* ShortcutsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DCDF41A4FBF447C8ACDE379 /* ShortcutsManager.swift */; };
 		CE1833878057E0544DAEEE91 /* WebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6347A7548A0AB7642EBF924 /* WebView.swift */; };
 		D003D2BBA8D57BF873C46FD5 /* AdBlockStatusPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52EBA0EC0EF38D81593115C /* AdBlockStatusPopover.swift */; };
 		D4356FC567DDF9244C71A270 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6D6C2DA623C79C993BEC85B /* ContentView.swift */; };
+		D6FAAA3115D275E76FA3CB85 /* back.svg in Resources */ = {isa = PBXBuildFile; fileRef = 91BB8B6F9E31DAD0ED03D68A /* back.svg */; };
 		E9636DAA3EBF1F919D9C988B /* ShortcutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A08E9252783AEF945D7C938 /* ShortcutsView.swift */; };
 		FD89C2DA18D8E9BAAFF593DA /* cosmetic-filters.json in Resources */ = {isa = PBXBuildFile; fileRef = 72261784DAB32E409CD0F35A /* cosmetic-filters.json */; };
 /* End PBXBuildFile section */
@@ -24,13 +28,17 @@
 /* Begin PBXFileReference section */
 		2A08E9252783AEF945D7C938 /* ShortcutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsView.swift; sourceTree = "<group>"; };
 		2A2C691A1D2C45FCE3AF7760 /* BrowserApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserApp.swift; sourceTree = "<group>"; };
+		700B59D84A0CDB7D7762F1D3 /* home.svg */ = {isa = PBXFileReference; path = home.svg; sourceTree = "<group>"; };
 		72261784DAB32E409CD0F35A /* cosmetic-filters.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "cosmetic-filters.json"; sourceTree = "<group>"; };
 		743BD572D7B7FC8B70AE8D69 /* isa.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = isa.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7DCDF41A4FBF447C8ACDE379 /* ShortcutsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsManager.swift; sourceTree = "<group>"; };
+		91BB8B6F9E31DAD0ED03D68A /* back.svg */ = {isa = PBXFileReference; path = back.svg; sourceTree = "<group>"; };
+		9F6A13D7569E2BCF516C073A /* forward.svg */ = {isa = PBXFileReference; path = forward.svg; sourceTree = "<group>"; };
 		A52EBA0EC0EF38D81593115C /* AdBlockStatusPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdBlockStatusPopover.swift; sourceTree = "<group>"; };
 		A6347A7548A0AB7642EBF924 /* WebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebView.swift; sourceTree = "<group>"; };
 		AA9867D2DC69FD0595345C1F /* PerformanceMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceMonitor.swift; sourceTree = "<group>"; };
 		BE843F5CEBEB649CA5A2E830 /* BrowserViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserViewModel.swift; sourceTree = "<group>"; };
+		CCF736D58D4B1B9DD78B6DC7 /* reload.svg */ = {isa = PBXFileReference; path = reload.svg; sourceTree = "<group>"; };
 		D6D6C2DA623C79C993BEC85B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		F0A52A1F857D2F78C1C727B7 /* content-blocker.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "content-blocker.json"; sourceTree = "<group>"; };
 		F633ED0068EDAF6D7850773B /* HistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryManager.swift; sourceTree = "<group>"; };
@@ -54,6 +62,17 @@
 			path = Sources;
 			sourceTree = "<group>";
 		};
+		74C0FC5AAC080B0E233CF4D5 /* Assets */ = {
+			isa = PBXGroup;
+			children = (
+				91BB8B6F9E31DAD0ED03D68A /* back.svg */,
+				9F6A13D7569E2BCF516C073A /* forward.svg */,
+				700B59D84A0CDB7D7762F1D3 /* home.svg */,
+				CCF736D58D4B1B9DD78B6DC7 /* reload.svg */,
+			);
+			path = Assets;
+			sourceTree = "<group>";
+		};
 		C0E1124C8EA80C4A29730C3D /* Adblocker */ = {
 			isa = PBXGroup;
 			children = (
@@ -66,6 +85,7 @@
 		CF6ECE20A724DCC289C91F4E = {
 			isa = PBXGroup;
 			children = (
+				74C0FC5AAC080B0E233CF4D5 /* Assets */,
 				DD1614F6EAC8AB9123D8ECA8 /* rules */,
 				5066DB9A88516AE2B881AA56 /* Sources */,
 				F80396EEF2BBB80B6BBF99C0 /* Products */,
@@ -148,8 +168,12 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D6FAAA3115D275E76FA3CB85 /* back.svg in Resources */,
 				4EEA959AC96C786DCE929A72 /* content-blocker.json in Resources */,
 				FD89C2DA18D8E9BAAFF593DA /* cosmetic-filters.json in Resources */,
+				2C1D5953FD6A3BBF4C07A068 /* forward.svg in Resources */,
+				18CECF81E2F415A5079FBF21 /* home.svg in Resources */,
+				59F91C1365AD69A23C4D6FC6 /* reload.svg in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

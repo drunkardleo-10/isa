@@ -70,7 +70,9 @@ struct WebView: NSViewRepresentable {
             DispatchQueue.main.async {
                 self.tab.snapshotImage = nil
                 self.tab.lastActiveTime = Date()
-                self.tab.currentURL = webView.url
+                if let url = webView.url, url.absoluteString != "about:blank" {
+                    self.tab.currentURL = url
+                }
                 let rawTitle = webView.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 if !rawTitle.isEmpty {
                     self.tab.pageTitle = rawTitle
@@ -86,7 +88,9 @@ struct WebView: NSViewRepresentable {
                 self.tab.snapshotImage = nil
                 self.tab.lastActiveTime = Date()
                 self.tab.isLoading = false
-                self.tab.currentURL = webView.url
+                if let url = webView.url, url.absoluteString != "about:blank" {
+                    self.tab.currentURL = url
+                }
                 let rawTitle = webView.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 if !rawTitle.isEmpty {
                     self.tab.pageTitle = rawTitle

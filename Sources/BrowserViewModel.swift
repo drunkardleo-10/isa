@@ -111,7 +111,7 @@ final class Tab: Identifiable, ObservableObject {
 
         urlObservation = webView.observe(\.url, options: [.new]) { [weak self] wv, _ in
             guard let self = self else { return }
-            guard let newURL = wv.url else { return }
+            guard let newURL = wv.url, newURL.absoluteString != "about:blank" else { return }
             DispatchQueue.main.async {
                 if self.currentURL != newURL {
                     let hostChanged = self.currentURL?.host != newURL.host
@@ -168,7 +168,7 @@ final class Tab: Identifiable, ObservableObject {
     }
 
     var isNewTabState: Bool {
-        currentURL == nil
+        currentURL == nil || currentURL?.absoluteString == "about:blank"
     }
 
     @discardableResult
@@ -601,6 +601,22 @@ final class BrowserViewModel: ObservableObject {
         PerformanceMonitor.shared.log(event: "Navigation", details: "Navigating forward")
         activeTab.lastActiveTime = Date()
         webView.goForward()
+    }
+
+    func goHomeActiveTab() {
+        PerformanceMonitor.shared.log(event: "Navigation", details: "Navigating home")
+        activeTab.lastActiveTime = Date()
+        withAnimation(.easeOut(duration: 0.15)) {
+            activeTab.currentURL = nil
+            activeTab.addressText = ""
+            activeTab.pageTitle = ""
+            activeTab.favicon = nil
+            activeTab.isLoading = false
+            activeTab.canGoBack = false
+            activeTab.canGoForward = false
+            activeTab.isAddressOverlayPresented = false
+        }
+        activeTab.webView?.load(URLRequest(url: URL(string: "about:blank")!))
     }
 
     

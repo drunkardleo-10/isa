@@ -92,6 +92,8 @@ struct ContentView: View {
             WindowDragHandle()
                 .frame(width: 78, height: 32)
 
+            navigationBar
+
             tabStripView
 
             Button(action: {
@@ -126,6 +128,23 @@ struct ContentView: View {
         .padding(.trailing, 12)
         .background(Color(nsColor: .windowBackgroundColor))
         .background(NonDraggableBackground())
+    }
+
+    private var navigationBar: some View {
+        HStack(spacing: 2) {
+            NavButton(icon: "back", tooltip: "Back (⌘[)", disabled: !viewModel.activeTab.canGoBack) {
+                viewModel.goBackActiveTab()
+            }
+            NavButton(icon: "forward", tooltip: "Forward (⌘])", disabled: !viewModel.activeTab.canGoForward) {
+                viewModel.goForwardActiveTab()
+            }
+            NavButton(icon: "reload", tooltip: "Reload (⌘R)", disabled: viewModel.activeTab.isNewTabState) {
+                viewModel.reloadActiveTab()
+            }
+            NavButton(icon: "home", tooltip: "Home", disabled: viewModel.activeTab.isNewTabState) {
+                viewModel.goHomeActiveTab()
+            }
+        }
     }
 
     private var tabStripView: some View {
@@ -1060,4 +1079,100 @@ struct NewTabButton: View {
         .help("New Tab (⌘T)")
     }
 }
+
+struct NavButton: View {
+    let icon: String
+    let tooltip: String
+    let disabled: Bool
+    let action: () -> Void
+
+    @State private var isHovered: Bool = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(isHovered && !disabled ? Color.primary.opacity(0.08) : Color.clear)
+                    .frame(width: 22, height: 22)
+
+                NavSvgIcon(name: icon)
+                    .foregroundColor(disabled ? .secondary.opacity(0.35) : (isHovered ? .primary : .secondary))
+                    .frame(width: 14, height: 14)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        .help(tooltip)
+    }
+}
+
+struct NavSvgIcon: View {
+    let name: String
+
+    var body: some View {
+        if let img = AssetLoader.image(named: name) {
+            Image(nsImage: img)
+                .resizable()
+                .renderingMode(.template)
+                .aspectRatio(contentMode: .fit)
+        } else {
+            fallbackSymbol
+        }
+    }
+
+    @ViewBuilder
+    private var fallbackSymbol: some View {
+        switch name {
+        case "back":
+            Image(systemName: "chevron.backward")
+                .font(.system(size: 11, weight: .medium))
+        case "forward":
+            Image(systemName: "chevron.forward")
+                .font(.system(size: 11, weight: .medium))
+        case "reload":
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: 11, weight: .medium))
+        case "home":
+            Image(systemName: "house")
+                .font(.system(size: 11, weight: .medium))
+        default:
+            EmptyView()
+        }
+    }
+}
+
+enum AssetLoader {
+    private static var cache: [String: NSImage] = [:]
+
+    static func image(named name: String) -> NSImage? {
+        if let cached = cache[name] {
+            return cached
+        }
+        let currentDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let sourceDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let candidates: [URL] = [
+            Bundle.main.url(forResource: name, withExtension: "svg", subdirectory: "Assets"),
+            Bundle.main.url(forResource: name, withExtension: "svg"),
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Assets/\(name).svg"),
+            Bundle.main.bundleURL.appendingPathComponent("Assets/\(name).svg"),
+            currentDir.appendingPathComponent("Assets/\(name).svg"),
+            sourceDir.appendingPathComponent("Assets/\(name).svg")
+        ].compactMap { $0 }
+
+        for url in candidates {
+            if FileManager.default.fileExists(atPath: url.path),
+               let img = NSImage(contentsOf: url) {
+                img.isTemplate = true
+                cache[name] = img
+                return img
+            }
+        }
+        return nil
+    }
+}
+
 

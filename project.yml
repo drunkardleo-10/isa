@@ -16,6 +16,8 @@ targets:
         buildPhase: resources
       - path: rules/cosmetic-filters.json
         buildPhase: resources
+      - path: Assets
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: isa
