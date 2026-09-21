@@ -127,9 +127,13 @@ struct ShortcutTileView: View {
         .onHover { hovering in
             if isHovered != hovering {
                 isHovered = hovering
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
             }
         }
-        .pointingHandCursor()
         .help("\(item.title) — \(item.url)")
         .contextMenu {
             Button("Open in New Tab") {
@@ -183,9 +187,13 @@ struct AddShortcutTileView: View {
         .onHover { hovering in
             if isHovered != hovering {
                 isHovered = hovering
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
             }
         }
-        .pointingHandCursor()
         .help("Add a new site shortcut")
     }
 }
@@ -334,47 +342,6 @@ struct ShortcutEditorModalView: View {
     private func submitIfValid() {
         guard isURLValid else { return }
         onSave(nameInput, urlInput)
-    }
-}
-
-
-private struct PointingHandCursorModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .onHover { hovering in
-                if hovering {
-                    if NSCursor.current != .pointingHand {
-                        NSCursor.pointingHand.push()
-                    }
-                } else {
-                    while NSCursor.current == .pointingHand {
-                        NSCursor.pop()
-                    }
-                }
-            }
-            .onContinuousHover { phase in
-                switch phase {
-                case .active:
-                    if NSCursor.current != .pointingHand {
-                        NSCursor.pointingHand.push()
-                    }
-                case .ended:
-                    while NSCursor.current == .pointingHand {
-                        NSCursor.pop()
-                    }
-                }
-            }
-            .onDisappear {
-                while NSCursor.current == .pointingHand {
-                    NSCursor.pop()
-                }
-            }
-    }
-}
-
-extension View {
-    fileprivate func pointingHandCursor() -> some View {
-        modifier(PointingHandCursorModifier())
     }
 }
 
