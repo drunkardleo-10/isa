@@ -112,8 +112,16 @@ final class PerformanceMonitor {
         guard let str1 = String(data: data1, encoding: .utf8) else { return }
 
         var pids = Set<String>()
+        let matchPatterns = ["com.isa.browser", "+isa", "/isa/", "isa.app", "isa.adblock.rules"]
         for line in str1.components(separatedBy: .newlines) {
-            if line.contains("/isa/") {
+            var matched = false
+            for pattern in matchPatterns {
+                if line.contains(pattern) {
+                    matched = true
+                    break
+                }
+            }
+            if matched {
                 let parts = line.split(whereSeparator: { $0.isWhitespace })
                 if parts.count >= 2 {
                     pids.insert(String(parts[1]))
@@ -168,15 +176,6 @@ final class PerformanceMonitor {
         }
     }
 
-    func startPeriodicLogging(tabCountProvider: @escaping () -> Int) {
-        guard isEnabled else { return }
-        guard timer == nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            let tabs = tabCountProvider()
-            self.log(event: "Perf", details: "Active Tabs: \(tabs)")
-        }
-    }
 
     func startPeriodicLogging(statsProvider: @escaping () -> String) {
         guard isEnabled else { return }

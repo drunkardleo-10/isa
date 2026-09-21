@@ -20,11 +20,15 @@ struct WebView: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
-        var tab: Tab
+        weak var tab: Tab?
         private var navigationStartTime: CFAbsoluteTime = 0
 
         init(tab: Tab) {
             self.tab = tab
+        }
+
+        deinit {
+            print("[isa] [DEINIT] WebView.Coordinator deallocated")
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
@@ -45,7 +49,7 @@ struct WebView: NSViewRepresentable {
             if navigationAction.targetFrame == nil {
                 if let url = navigationAction.request.url, !url.absoluteString.isEmpty {
                     DispatchQueue.main.async {
-                        self.tab.onOpenNewTab?(url)
+                        self.tab?.onOpenNewTab?(url)
                     }
                 }
                 decisionHandler(.cancel)
@@ -54,7 +58,7 @@ struct WebView: NSViewRepresentable {
             if navigationAction.navigationType == .linkActivated && (navigationAction.modifierFlags.contains(.command) || navigationAction.buttonNumber == 2) {
                 if let url = navigationAction.request.url, !url.absoluteString.isEmpty {
                     DispatchQueue.main.async {
-                        self.tab.onOpenNewTab?(url)
+                        self.tab?.onOpenNewTab?(url)
                     }
                     decisionHandler(.cancel)
                     return
@@ -94,7 +98,7 @@ struct WebView: NSViewRepresentable {
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
             if let url = navigationAction.request.url, !url.absoluteString.isEmpty {
                 DispatchQueue.main.async {
-                    self.tab.onOpenNewTab?(url)
+                    self.tab?.onOpenNewTab?(url)
                 }
             }
             return nil
@@ -103,61 +107,62 @@ struct WebView: NSViewRepresentable {
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
             navigationStartTime = CFAbsoluteTimeGetCurrent()
             DispatchQueue.main.async {
-                self.tab.isLoading = true
+                self.tab?.isLoading = true
             }
             PerformanceMonitor.shared.log(event: "LoadStart", details: webView.url?.absoluteString ?? "")
         }
 
         func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
             DispatchQueue.main.async {
-                self.tab.snapshotImage = nil
-                self.tab.lastActiveTime = Date()
+                self.tab?.snapshotImage = nil
+                self.tab?.lastActiveTime = Date()
                 if let url = webView.url, url.absoluteString != "about:blank" {
-                    self.tab.currentURL = url
+                    self.tab?.currentURL = url
                 }
                 let rawTitle = webView.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 if !rawTitle.isEmpty {
-                    self.tab.pageTitle = rawTitle
+                    self.tab?.pageTitle = rawTitle
                 }
-                self.tab.canGoBack = webView.canGoBack
-                self.tab.canGoForward = webView.canGoForward
+                self.tab?.canGoBack = webView.canGoBack
+                self.tab?.canGoForward = webView.canGoForward
             }
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             let durationMs = Int((CFAbsoluteTimeGetCurrent() - self.navigationStartTime) * 1000)
             DispatchQueue.main.async {
-                self.tab.snapshotImage = nil
-                self.tab.lastActiveTime = Date()
-                self.tab.isLoading = false
+                guard let tab = self.tab else { return }
+                tab.snapshotImage = nil
+                tab.lastActiveTime = Date()
+                tab.isLoading = false
                 if let url = webView.url, url.absoluteString != "about:blank" {
-                    self.tab.currentURL = url
+                    tab.currentURL = url
                 }
                 let rawTitle = webView.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 if !rawTitle.isEmpty {
-                    self.tab.pageTitle = rawTitle
-                } else if self.tab.pageTitle.isEmpty {
-                    self.tab.pageTitle = webView.url?.host ?? "Untitled"
+                    tab.pageTitle = rawTitle
+                } else if tab.pageTitle.isEmpty {
+                    tab.pageTitle = webView.url?.host ?? "Untitled"
                 }
-                self.tab.canGoBack = webView.canGoBack
-                self.tab.canGoForward = webView.canGoForward
-                PerformanceMonitor.shared.log(event: "LoadFinish", details: "Loaded \"\(self.tab.pageTitle)\" in \(durationMs)ms")
+                tab.canGoBack = webView.canGoBack
+                tab.canGoForward = webView.canGoForward
+                PerformanceMonitor.shared.log(event: "LoadFinish", details: "Loaded \"\(tab.pageTitle)\" in \(durationMs)ms")
                 if let host = webView.url?.host {
                     AdBlockController.recordNavigation(for: host)
                 }
 
-                if self.tab.isReloading {
-                    let scrollY = self.tab.savedScrollY
+                if tab.isReloading {
+                    let scrollY = tab.savedScrollY
                     if scrollY > 0 {
                         webView.evaluateJavaScript("window.scrollTo(0, \(scrollY))") { _, _ in
                             DispatchQueue.main.async {
-                                self.tab.isReloading = false
-                                self.tab.savedScrollY = 0
+                                self.tab?.isReloading = false
+                                self.tab?.savedScrollY = 0
                             }
                         }
                     } else {
-                        self.tab.isReloading = false
-                        self.tab.savedScrollY = 0
+                        tab.isReloading = false
+                        tab.savedScrollY = 0
                     }
                 }
             }
@@ -178,7 +183,7 @@ struct WebView: NSViewRepresentable {
                 URLSession.shared.dataTask(with: iconURL) { [weak self] data, _, _ in
                     guard let self = self, let data = data, let image = NSImage(data: data) else { return }
                     DispatchQueue.main.async {
-                        self.tab.favicon = image
+                        self.tab?.favicon = image
                     }
                 }.resume()
             }
@@ -186,14 +191,14 @@ struct WebView: NSViewRepresentable {
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             DispatchQueue.main.async {
-                self.tab.isLoading = false
+                self.tab?.isLoading = false
             }
             PerformanceMonitor.shared.log(event: "LoadError", details: error.localizedDescription)
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             DispatchQueue.main.async {
-                self.tab.isLoading = false
+                self.tab?.isLoading = false
             }
             PerformanceMonitor.shared.log(event: "LoadError", details: error.localizedDescription)
         }

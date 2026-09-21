@@ -134,6 +134,7 @@ final class Tab: Identifiable, ObservableObject {
 
     deinit {
         invalidateObservations()
+        print("[isa] [DEINIT] Tab \(id.uuidString.prefix(6)) deallocated")
     }
 
     private func setupObservations(for webView: WKWebView) {
@@ -227,6 +228,7 @@ final class Tab: Identifiable, ObservableObject {
         preferences.preferredContentMode = .desktop
         configuration.defaultWebpagePreferences = preferences
         configuration.preferences.isElementFullscreenEnabled = true
+        configuration.mediaTypesRequiringUserActionForPlayback = .all
         configuration.applicationNameForUserAgent = "Version/18.0 Safari/605.1.15"
         let backspaceScript = WKUserScript(
             source: """

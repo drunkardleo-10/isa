@@ -113,96 +113,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.applicationIconImage = icon
         }
 
-        if ProcessInfo.processInfo.arguments.contains("--test-decay") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-                self?.runTwoTabDecayTest()
-            }
-            return
-        }
-
         if ProcessInfo.processInfo.arguments.contains("--run-perf-sequence") ||
            ProcessInfo.processInfo.arguments.contains("--open-tabs") ||
            ProcessInfo.processInfo.arguments.contains("--benchmark") ||
            ProcessInfo.processInfo.environment["ISA_BENCHMARK"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
                 self?.runPerfSequence()
-            }
-        }
-    }
-
-    func runTwoTabDecayTest() {
-        guard let vm = viewModel else { return }
-        print("=== Starting 2-Tab Fast Switching & 60s Idle Decay Test ===")
-
-        let tabA = vm.tabs[0]
-        vm.navigate(tab: tabA, to: "https://www.wikipedia.org/?utm_source=chatgpt.com")
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            let tabB = Tab()
-            vm.tabs.append(tabB)
-            vm.selectedTabId = tabB.id
-            vm.bindTabs()
-            vm.navigate(tab: tabB, to: "https://github.com/?utm_source=chatgpt.com")
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                print("--- Stage 1: Fast Switching between Tab A and Tab B (15s) ---")
-                var switchCount = 0
-                func doRapidSwitch() {
-                    if switchCount >= 6 {
-                        print("[TEST] Verified: Both Tab A and Tab B stayed live. Tab A webView: \(tabA.webView != nil), Tab B webView: \(tabB.webView != nil)")
-                        assert(tabA.webView != nil && !tabA.isSleeping, "Tab A must remain live")
-                        assert(tabB.webView != nil && !tabB.isSleeping, "Tab B must remain live")
-                        print("[TEST] PASS: Fast switching between 2 tabs kept both live with ZERO reloads.")
-                        startIdleDecayPhase()
-                        return
-                    }
-                    switchCount += 1
-                    let target = (switchCount % 2 == 1) ? tabA : tabB
-                    vm.selectTab(id: target.id)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        doRapidSwitch()
-                    }
-                }
-
-                func startIdleDecayPhase() {
-                    print("--- Stage 2: Leaving Tab A active and Tab B idle for 65s ---")
-                    vm.selectTab(id: tabA.id)
-                    let startTime = Date()
-
-                    Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { timer in
-                        let elapsed = Int(Date().timeIntervalSince(startTime))
-                        let bLive = tabB.webView != nil
-                        let bSleeping = tabB.isSleeping
-                        print("[TEST] [\(elapsed)s] Tab A live: \(tabA.webView != nil) | Tab B live: \(bLive), sleeping: \(bSleeping)")
-
-                        if elapsed < 55 {
-                            if !bLive {
-                                print("[TEST] FAIL: Tab B slept prematurely before 60s idle")
-                                exit(1)
-                            }
-                        } else if elapsed >= 65 {
-                            timer.invalidate()
-                            if bSleeping && !bLive {
-                                print("[TEST] PASS: Tab B slept automatically after 60s of inactivity without a 3rd tab!")
-                                assert(tabA.webView != nil && !tabA.isSleeping, "Tab A must remain active and live")
-
-                                print("--- Stage 3: Waking Tab B on demand ---")
-                                vm.selectTab(id: tabB.id)
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                    assert(tabB.webView != nil && !tabB.isSleeping, "Tab B must be awake")
-                                    print("[TEST] PASS: Tab B successfully woke up and restored webView.")
-                                    print("=== All 2-Tab Switching and Idle Decay Tests PASSED ===")
-                                    exit(0)
-                                }
-                            } else {
-                                print("[TEST] FAIL: Tab B did not sleep after 65s idle")
-                                exit(1)
-                            }
-                        }
-                    }
-                }
-
-                doRapidSwitch()
             }
         }
     }

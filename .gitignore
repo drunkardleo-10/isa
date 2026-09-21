@@ -7,3 +7,4 @@ scripts/
 target/
 *.log
 *.sh
+report.md
