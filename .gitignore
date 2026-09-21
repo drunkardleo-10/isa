@@ -9,3 +9,4 @@ target/
 *.sh
 report.md
 *.json
+*.dmg
