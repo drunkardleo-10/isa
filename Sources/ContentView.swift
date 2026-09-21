@@ -25,9 +25,16 @@ struct ContentView: View {
 
                     ForEach(viewModel.tabs) { tab in
                         if !tab.isNewTabState || tab.webView != nil || tab.isSleeping {
-                            WebView(tab: tab)
-                                .opacity(tab.id == viewModel.selectedTabId && !tab.isNewTabState ? 1 : 0)
-                                .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isNewTabState && !tab.isAddressOverlayPresented && !isShieldPopoverPresented && !isDownloadsPopoverPresented)
+                            ZStack {
+                                WebView(tab: tab)
+                                if let error = tab.pageError {
+                                    PageCrashErrorView(error: error) {
+                                        tab.reload()
+                                    }
+                                }
+                            }
+                            .opacity(tab.id == viewModel.selectedTabId && !tab.isNewTabState ? 1 : 0)
+                            .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isNewTabState && !tab.isAddressOverlayPresented && !isShieldPopoverPresented && !isDownloadsPopoverPresented)
                         }
                     }
 
@@ -206,18 +213,7 @@ struct ContentView: View {
                 .help("Downloads")
             }
 
-            Button(action: {
-                PerformanceMonitor.shared.log(event: "Click", details: "Theme toggle button (Current: \(viewModel.theme.rawValue))")
-                viewModel.toggleTheme()
-            }) {
-                Image(systemName: viewModel.theme.iconName)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(width: 24, height: 24)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Appearance: \(viewModel.theme.rawValue.capitalized)")
+            AnimatedThemeToggle(viewModel: viewModel)
         }
         .frame(height: 32)
         .padding(.trailing, 12)

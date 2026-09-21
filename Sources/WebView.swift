@@ -113,6 +113,7 @@ struct WebView: NSViewRepresentable {
             }
             navigationStartTime = CFAbsoluteTimeGetCurrent()
             DispatchQueue.main.async {
+                self.tab?.pageError = nil
                 self.tab?.isLoading = true
             }
             PerformanceMonitor.shared.log(event: "LoadStart", details: webView.url?.absoluteString ?? "")
@@ -120,6 +121,7 @@ struct WebView: NSViewRepresentable {
 
         func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
             DispatchQueue.main.async {
+                self.tab?.pageError = nil
                 self.tab?.snapshotImage = nil
                 self.tab?.lastActiveTime = Date()
                 if let url = webView.url, url.absoluteString != "about:blank" {
@@ -198,6 +200,12 @@ struct WebView: NSViewRepresentable {
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             DispatchQueue.main.async {
                 self.tab?.isLoading = false
+                let nsError = error as NSError
+                if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
+                    return
+                }
+                let host = webView.url?.host ?? self.tab?.currentURL?.host ?? ""
+                self.tab?.pageError = PageErrorInfo.from(error: error, url: webView.url ?? self.tab?.currentURL, host: host)
             }
             PerformanceMonitor.shared.log(event: "LoadError", details: error.localizedDescription)
         }
@@ -205,8 +213,28 @@ struct WebView: NSViewRepresentable {
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             DispatchQueue.main.async {
                 self.tab?.isLoading = false
+                let nsError = error as NSError
+                if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
+                    return
+                }
+                let host = webView.url?.host ?? self.tab?.currentURL?.host ?? ""
+                self.tab?.pageError = PageErrorInfo.from(error: error, url: webView.url ?? self.tab?.currentURL, host: host)
             }
             PerformanceMonitor.shared.log(event: "LoadError", details: error.localizedDescription)
+        }
+
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            DispatchQueue.main.async {
+                self.tab?.isLoading = false
+                let host = webView.url?.host ?? self.tab?.currentURL?.host ?? ""
+                self.tab?.pageError = PageErrorInfo(
+                    type: .processCrashed,
+                    failingURL: webView.url ?? self.tab?.currentURL,
+                    host: host,
+                    localizedDescription: "The webpage crashed or was terminated."
+                )
+            }
+            PerformanceMonitor.shared.log(event: "ProcessTerminate", details: "WebContent process crashed for \(webView.url?.absoluteString ?? "unknown")")
         }
     }
 }

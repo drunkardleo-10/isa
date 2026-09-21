@@ -109,6 +109,7 @@ final class Tab: Identifiable, ObservableObject {
     @Published var favicon: NSImage? = nil
     let findState: TabFindState
     private var findCancellable: AnyCancellable?
+    @Published var pageError: PageErrorInfo? = nil
 
     @Published var webView: WKWebView? = nil {
         didSet {
@@ -133,6 +134,19 @@ final class Tab: Identifiable, ObservableObject {
             return true
         }
         return false
+    }
+
+    func reload() {
+        let targetURL = pageError?.failingURL ?? currentURL ?? webView?.url
+        let hadError = (pageError != nil)
+        pageError = nil
+        lastActiveTime = Date()
+        let wv = ensureWebView()
+        if let url = targetURL, (hadError || wv.url == nil || wv.url?.absoluteString == "about:blank") {
+            wv.load(URLRequest(url: url))
+        } else {
+            wv.reload()
+        }
     }
 
     private var titleObservation: NSKeyValueObservation?
@@ -620,6 +634,7 @@ final class BrowserViewModel: ObservableObject {
         PerformanceMonitor.shared.log(event: "Navigation", details: "Navigating to \(url.absoluteString)")
         tab.lastActiveTime = Date()
         tab.isSleeping = false
+        tab.pageError = nil
         let webView = tab.ensureWebView()
         withAnimation(.easeOut(duration: 0.2)) {
             tab.currentURL = url
@@ -631,16 +646,15 @@ final class BrowserViewModel: ObservableObject {
     }
 
     func reloadActiveTab() {
-        guard let webView = activeTab.webView else { return }
         PerformanceMonitor.shared.log(event: "Navigation", details: "Reloading active tab")
-        activeTab.lastActiveTime = Date()
-        webView.reload()
+        activeTab.reload()
     }
 
     func goBackActiveTab() {
         guard let webView = activeTab.webView, webView.canGoBack else { return }
         PerformanceMonitor.shared.log(event: "Navigation", details: "Navigating back")
         activeTab.lastActiveTime = Date()
+        activeTab.pageError = nil
         webView.goBack()
     }
 
@@ -648,12 +662,14 @@ final class BrowserViewModel: ObservableObject {
         guard let webView = activeTab.webView, webView.canGoForward else { return }
         PerformanceMonitor.shared.log(event: "Navigation", details: "Navigating forward")
         activeTab.lastActiveTime = Date()
+        activeTab.pageError = nil
         webView.goForward()
     }
 
     func goHomeActiveTab() {
         PerformanceMonitor.shared.log(event: "Navigation", details: "Navigating home")
         activeTab.lastActiveTime = Date()
+        activeTab.pageError = nil
         withAnimation(.easeOut(duration: 0.15)) {
             activeTab.currentURL = nil
             activeTab.addressText = ""
