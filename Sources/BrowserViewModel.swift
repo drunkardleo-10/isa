@@ -318,8 +318,8 @@ final class BrowserViewModel: ObservableObject {
     private var sleepMaintenanceTimer: Timer?
     private var memoryPressureSource: DispatchSourceMemoryPressure?
     private var sigUsr1Source: DispatchSourceSignal?
-    private let maxLiveWebViews: Int = 2
-    private let backgroundLiveTabIdleTimeout: TimeInterval = 60.0
+    private let maxLiveWebViews: Int = 5
+    private let backgroundLiveTabIdleTimeout: TimeInterval = 120.0
 
     var activeTab: Tab {
         if let tab = tabs.first(where: { $0.id == selectedTabId }) {
