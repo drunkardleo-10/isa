@@ -124,7 +124,16 @@ final class Tab: Identifiable, ObservableObject {
     @Published var isSnapshotting: Bool = false
     @Published var isReloading: Bool = false
     var savedScrollY: CGFloat = 0
+    var savedInteractionState: Any? = nil
     var lastActiveTime: Date = Date()
+    var isPlayingAudioOverride: Bool = false
+    var isPlayingAudio: Bool {
+        if isPlayingAudioOverride { return true }
+        if let wv = webView, let val = (wv as AnyObject).value(forKey: "_isPlayingAudio") as? Bool, val {
+            return true
+        }
+        return false
+    }
 
     private var titleObservation: NSKeyValueObservation?
     private var urlObservation: NSKeyValueObservation?
@@ -231,49 +240,19 @@ final class Tab: Identifiable, ObservableObject {
         configuration.mediaTypesRequiringUserActionForPlayback = .all
         configuration.applicationNameForUserAgent = "Version/18.0 Safari/605.1.15"
         let backspaceScript = WKUserScript(
-            source: """
-            window.addEventListener('keydown', function(e) {
-                if (e.key === 'Backspace' || e.keyCode === 8) {
-                    var t = e.target;
-                    var isEditable = false;
-                    if (t) {
-                        var tag = t.tagName ? t.tagName.toUpperCase() : '';
-                        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
-                            isEditable = true;
-                        } else if (t.isContentEditable) {
-                            isEditable = true;
-                        } else if (t.closest && t.closest("[contenteditable='true'], [contenteditable='']")) {
-                            isEditable = true;
-                        }
-                    }
-                    if (!isEditable) {
-                        e.preventDefault();
-                    }
-                }
-            }, true);
-            """,
+            source: AdBlockController.backspaceScriptSource,
             injectionTime: .atDocumentStart,
-            forMainFrameOnly: false
+            forMainFrameOnly: true
         )
         configuration.userContentController.addUserScript(backspaceScript)
         configuration.userContentController.add(TabScriptHandler(tab: self), name: "openNewTab")
         let linkClickScript = WKUserScript(
-            source: """
-            window.addEventListener('auxclick', function(e) {
-                if (e.button === 1) {
-                    var a = e.target.closest('a');
-                    if (a && a.href && !a.href.startsWith('javascript:')) {
-                        e.preventDefault();
-                        window.webkit.messageHandlers.openNewTab.postMessage(a.href);
-                    }
-                }
-            }, true);
-            """,
+            source: AdBlockController.linkClickScriptSource,
             injectionTime: .atDocumentStart,
             forMainFrameOnly: false
         )
         configuration.userContentController.addUserScript(linkClickScript)
-        AdBlockController.apply(to: configuration)
+        AdBlockController.apply(to: configuration, host: currentURL?.host)
         let newWebView = BrowserWebView(frame: .zero, configuration: configuration)
         newWebView.tab = self
         newWebView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
@@ -323,6 +302,8 @@ final class BrowserViewModel: ObservableObject {
     @Published var isBenchmarkRunning: Bool = false
     private var tabCancellables = Set<AnyCancellable>()
     private var sleepMaintenanceTimer: Timer?
+    private var memoryPressureSource: DispatchSourceMemoryPressure?
+    private var sigUsr1Source: DispatchSourceSignal?
     private let maxLiveWebViews: Int = 2
     private let backgroundLiveTabIdleTimeout: TimeInterval = 60.0
 
@@ -346,6 +327,7 @@ final class BrowserViewModel: ObservableObject {
         self.selectedTabId = initialTab.id
         bindTabs()
         applyAppAppearance()
+        setupMemoryPressureHandler()
         PerformanceMonitor.shared.startPeriodicLogging { [weak self] in
             guard let self = self else { return "Tabs: 0" }
             let total = self.tabs.count
@@ -722,10 +704,102 @@ final class BrowserViewModel: ObservableObject {
     
     
     
+    func compressSnapshot(_ image: NSImage) -> NSImage {
+        guard let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData) else {
+            return image
+        }
+        let targetW = max(bitmap.pixelsWide / 2, 1)
+        let targetH = max(bitmap.pixelsHigh / 2, 1)
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: targetW,
+            pixelsHigh: targetH,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            return image
+        }
+        rep.size = NSSize(width: Double(targetW) / 2.0, height: Double(targetH) / 2.0)
+        NSGraphicsContext.saveGraphicsState()
+        let ctx = NSGraphicsContext(bitmapImageRep: rep)
+        NSGraphicsContext.current = ctx
+        image.draw(in: NSRect(x: 0, y: 0, width: rep.size.width, height: rep.size.height))
+        NSGraphicsContext.restoreGraphicsState()
+
+        if let jpegData = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.6]),
+           let compressed = NSImage(data: jpegData) {
+            return compressed
+        }
+        return image
+    }
+
+    private func setupMemoryPressureHandler() {
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
+        source.setEventHandler { [weak self] in
+            guard let self = self, let src = self.memoryPressureSource else { return }
+            let event = src.data
+            if event.contains(.critical) {
+                self.handleCriticalMemoryPressure()
+            } else if event.contains(.warning) {
+                self.handleWarningMemoryPressure()
+            }
+        }
+        source.resume()
+        self.memoryPressureSource = source
+
+        signal(SIGUSR1, SIG_IGN)
+        let sig = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
+        sig.setEventHandler { [weak self] in
+            self?.handleWarningMemoryPressure()
+        }
+        sig.resume()
+        self.sigUsr1Source = sig
+    }
+
+    func handleWarningMemoryPressure() {
+        let candidate = tabs.filter {
+            $0.id != selectedTabId &&
+            $0.webView != nil &&
+            !$0.isSleeping &&
+            !$0.isSnapshotting &&
+            !$0.isPlayingAudio &&
+            $0.currentURL != nil
+        }.sorted { $0.lastActiveTime < $1.lastActiveTime }.first
+
+        if let tabToEvict = candidate {
+            let title = tabToEvict.pageTitle.isEmpty ? (tabToEvict.currentURL?.host ?? "Tab") : tabToEvict.pageTitle
+            PerformanceMonitor.shared.log(event: "MemoryPressure", details: "Evicting LRU tab '\(title)' on memory pressure warning")
+            sleepTab(tabToEvict)
+        }
+    }
+
+    func handleCriticalMemoryPressure() {
+        let candidates = tabs.filter {
+            $0.id != selectedTabId &&
+            $0.webView != nil &&
+            !$0.isSleeping &&
+            !$0.isSnapshotting &&
+            !$0.isPlayingAudio &&
+            $0.currentURL != nil
+        }
+        for tabToEvict in candidates {
+            let title = tabToEvict.pageTitle.isEmpty ? (tabToEvict.currentURL?.host ?? "Tab") : tabToEvict.pageTitle
+            PerformanceMonitor.shared.log(event: "MemoryPressure", details: "Evicting tab '\(title)' on critical memory pressure")
+            sleepTab(tabToEvict)
+        }
+    }
+
     func sleepTab(_ tab: Tab) {
         guard tab.id != selectedTabId,
               !tab.isSleeping,
               !tab.isSnapshotting,
+              !tab.isPlayingAudio,
               let webView = tab.webView,
               tab.currentURL != nil else {
             return
@@ -752,18 +826,21 @@ final class BrowserViewModel: ObservableObject {
                     guard tab.id != self.selectedTabId else { return }
 
                     tab.savedScrollY = (result as? CGFloat) ?? CGFloat((result as? Double) ?? 0)
-                    tab.snapshotImage = image
+                    tab.savedInteractionState = webView.interactionState
+                    let compressedSnapshot = image != nil ? self.compressSnapshot(image!) : nil
+                    tab.snapshotImage = compressedSnapshot
                     tab.isSleeping = true
 
                     webView.stopLoading()
                     webView.navigationDelegate = nil
                     webView.uiDelegate = nil
                     webView.configuration.userContentController.removeScriptMessageHandler(forName: "openNewTab")
+                    webView.load(URLRequest(url: URL(string: "about:blank")!))
                     webView.removeFromSuperview()
                     tab.webView = nil
 
                     let title = tab.pageTitle.isEmpty ? (tab.currentURL?.host ?? "Tab") : tab.pageTitle
-                    let snapshotKB = (image?.tiffRepresentation?.count ?? 0) / 1024
+                    let snapshotKB = (compressedSnapshot?.tiffRepresentation?.count ?? 0) / 1024
                     PerformanceMonitor.shared.log(event: "Sleep", details: "Tab \"\(title)\" put to sleep | snapshot: \(snapshotKB)KB | scrollY: \(Int(tab.savedScrollY))")
                 }
             }
@@ -779,7 +856,9 @@ final class BrowserViewModel: ObservableObject {
         tab.isSleeping = false
         tab.isReloading = true
         let webView = tab.ensureWebView()
-        if let url = tab.currentURL {
+        if let savedState = tab.savedInteractionState {
+            webView.interactionState = savedState
+        } else if let url = tab.currentURL {
             webView.load(URLRequest(url: url))
         }
     }

@@ -3,8 +3,9 @@ build/
 DerivedData/
 *.xcodeproj/**/xcuserdata/
 .build/
-scripts/
+scripts/*
 target/
 *.log
 *.sh
 report.md
+*.json

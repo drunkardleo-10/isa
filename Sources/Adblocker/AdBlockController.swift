@@ -34,27 +34,67 @@ public final class AdBlockController {
     }
 
     
-    public static func apply(to configuration: WKWebViewConfiguration) {
-        shared.apply(to: configuration)
+    public static let backspaceScriptSource = """
+    window.addEventListener('keydown', function(e) {
+        if (e.key === 'Backspace' || e.keyCode === 8) {
+            var t = e.target;
+            var isEditable = false;
+            if (t) {
+                var tag = t.tagName ? t.tagName.toUpperCase() : '';
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+                    isEditable = true;
+                } else if (t.isContentEditable) {
+                    isEditable = true;
+                } else if (t.closest && t.closest("[contenteditable='true'], [contenteditable='']")) {
+                    isEditable = true;
+                }
+            }
+            if (!isEditable) {
+                e.preventDefault();
+            }
+        }
+    }, true);
+    """
+
+    public static let linkClickScriptSource = """
+    window.addEventListener('auxclick', function(e) {
+        if (e.button === 1) {
+            var a = e.target.closest('a');
+            if (a && a.href && !a.href.startsWith('javascript:')) {
+                e.preventDefault();
+                window.webkit.messageHandlers.openNewTab.postMessage(a.href);
+            }
+        }
+    }, true);
+    """
+
+    public static func apply(to configuration: WKWebViewConfiguration, host: String? = nil) {
+        shared.apply(to: configuration, host: host)
     }
 
-    
-    
-    
-    public func apply(to configuration: WKWebViewConfiguration) {
+    public func apply(to configuration: WKWebViewConfiguration, host: String? = nil) {
+        if ProcessInfo.processInfo.environment["ISA_DISABLE_ADBLOCK"] == "1" ||
+           ProcessInfo.processInfo.arguments.contains("--no-adblock") {
+            return
+        }
+
         startLoadingRuleListIfNeeded()
 
         if ProcessInfo.processInfo.environment["ISA_DISABLE_COSMETIC"] != "1",
-           let cosmeticScript = cosmeticUserScript {
+           let cosmeticScript = cosmeticUserScript(for: host) {
             configuration.userContentController.addUserScript(cosmeticScript)
         }
 
         if ProcessInfo.processInfo.environment["ISA_DISABLE_SCRIPTLETS"] != "1",
-           let scriptletScript = scriptletUserScript {
+           let scriptletScript = scriptletUserScript(for: host) {
             configuration.userContentController.addUserScript(scriptletScript)
         }
 
-        
+        if ProcessInfo.processInfo.environment["ISA_DISABLE_CONTENT_RULES"] == "1" ||
+           ProcessInfo.processInfo.arguments.contains("--no-content-rules") {
+            return
+        }
+
         lock.lock()
         if case .ready(let ruleList) = state {
             lock.unlock()
@@ -63,7 +103,6 @@ public final class AdBlockController {
         }
         lock.unlock()
 
-        
         waitForReadiness()
 
         lock.lock()
@@ -73,6 +112,125 @@ public final class AdBlockController {
         } else {
             PerformanceMonitor.shared.log(event: "AdBlock", details: "Rule list unavailable; proceeding without content blocker")
         }
+    }
+
+    public func updateUserScripts(for webView: WKWebView, host: String) {
+        let ucc = webView.configuration.userContentController
+        ucc.removeAllUserScripts()
+        let backspaceScript = WKUserScript(source: Self.backspaceScriptSource, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        ucc.addUserScript(backspaceScript)
+        let linkClickScript = WKUserScript(source: Self.linkClickScriptSource, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        ucc.addUserScript(linkClickScript)
+
+        if ProcessInfo.processInfo.environment["ISA_DISABLE_ADBLOCK"] != "1" &&
+           !ProcessInfo.processInfo.arguments.contains("--no-adblock") {
+            if ProcessInfo.processInfo.environment["ISA_DISABLE_COSMETIC"] != "1",
+               let cosmetic = cosmeticUserScript(for: host) {
+                ucc.addUserScript(cosmetic)
+            }
+            if ProcessInfo.processInfo.environment["ISA_DISABLE_SCRIPTLETS"] != "1",
+               let scriptlet = scriptletUserScript(for: host) {
+                ucc.addUserScript(scriptlet)
+            }
+        }
+    }
+
+    public func cosmeticCSS(for host: String?) -> String {
+        guard let host = host?.lowercased(), !host.isEmpty else { return "" }
+        let parts = host.split(separator: ".")
+        var allSelectors: [String] = []
+        let limit = parts.count > 1 ? parts.count - 1 : parts.count
+        lock.lock()
+        for i in 0..<limit {
+            let candidate = parts[i...].joined(separator: ".")
+            if let sel = cosmeticRulesByDomain[candidate], !sel.isEmpty {
+                allSelectors.append(sel)
+            }
+        }
+        lock.unlock()
+        guard !allSelectors.isEmpty else { return "" }
+        return allSelectors.joined(separator: ",\n") + " { display: none !important; }"
+    }
+
+    public func cosmeticUserScript(for host: String?) -> WKUserScript? {
+        let css = cosmeticCSS(for: host)
+        guard !css.isEmpty else { return nil }
+        guard let data = try? JSONSerialization.data(withJSONObject: [css]),
+              let jsonArray = String(data: data, encoding: .utf8),
+              jsonArray.hasPrefix("[\"") && jsonArray.hasSuffix("\"]") else {
+            return nil
+        }
+        let escapedCSS = String(jsonArray.dropFirst().dropLast())
+        let jsSource = """
+        (function() {
+            if (window.__isa_cosmetic_applied__) return;
+            window.__isa_cosmetic_applied__ = true;
+            var style = document.createElement("style");
+            style.setAttribute("type", "text/css");
+            style.setAttribute("data-isa-adblock", "cosmetic");
+            style.textContent = \(escapedCSS);
+            function tryInject() {
+                var target = document.head || document.documentElement;
+                if (target) {
+                    target.appendChild(style);
+                    return true;
+                }
+                return false;
+            }
+            if (!tryInject()) {
+                if (window.MutationObserver) {
+                    var observer = new MutationObserver(function() {
+                        if (tryInject()) {
+                            observer.disconnect();
+                        }
+                    });
+                    observer.observe(document, { childList: true, subtree: true });
+                }
+                document.addEventListener("DOMContentLoaded", tryInject, { once: true });
+            }
+        })();
+        """
+        return WKUserScript(source: jsSource, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+    }
+
+    public func scriptletUserScript(for host: String?) -> WKUserScript? {
+        guard let host = host?.lowercased(), !host.isEmpty else { return nil }
+        let parts = host.split(separator: ".")
+        var snippetsForHost: [String] = []
+        let limit = parts.count > 1 ? parts.count - 1 : parts.count
+        lock.lock()
+        for i in 0..<limit {
+            let candidate = parts[i...].joined(separator: ".")
+            if let list = scriptletsByDomain[candidate] {
+                snippetsForHost.append(contentsOf: list)
+            }
+        }
+        lock.unlock()
+        guard !snippetsForHost.isEmpty else { return nil }
+
+        var snippetGlobalId = 0
+        var body = ""
+        for snippet in snippetsForHost {
+            snippetGlobalId += 1
+            body += """
+                if (!window.__isa_scriptlets_run__[\(snippetGlobalId)]) {
+                    window.__isa_scriptlets_run__[\(snippetGlobalId)] = true;
+                    try {
+                        \(snippet)
+                    } catch (e) {}
+                }
+            """
+        }
+
+        let jsSource = """
+        (function() {
+            if (window.__isa_scriptlets_applied__) return;
+            window.__isa_scriptlets_applied__ = true;
+            window.__isa_scriptlets_run__ = window.__isa_scriptlets_run__ || {};
+            \(body)
+        })();
+        """
+        return WKUserScript(source: jsSource, injectionTime: .atDocumentStart, forMainFrameOnly: true)
     }
 
     private func loadCosmeticFilterScript() {
@@ -87,78 +245,22 @@ public final class AdBlockController {
 
         guard let url = candidateURLs.compactMap({ $0 }).first(where: { FileManager.default.fileExists(atPath: $0.path) }),
               let jsonString = try? String(contentsOf: url, encoding: .utf8),
-              !jsonString.isEmpty else {
+              !jsonString.isEmpty,
+              let data = jsonString.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
             PerformanceMonitor.shared.log(event: "AdBlock", details: "Cosmetic filters file not found or empty")
             return
         }
 
-        let jsSource = """
-        (function() {
-            if (window.__isa_cosmetic_applied__) return;
-            window.__isa_cosmetic_applied__ = true;
-
-            var rules = \(jsonString);
-            var hostname = (window.location && window.location.hostname) ? window.location.hostname.toLowerCase() : "";
-            if (!hostname) return;
-
-            var parts = hostname.split(".");
-            var selectors = [];
-            for (var i = 0; i < parts.length - 1; i++) {
-                var domain = parts.slice(i).join(".");
-                var sel = rules[domain];
-                if (sel) {
-                    selectors.push(sel);
-                }
-            }
-
-            if (selectors.length === 0) return;
-
-            var style = document.createElement("style");
-            style.setAttribute("type", "text/css");
-            style.setAttribute("data-isa-adblock", "cosmetic");
-            style.textContent = selectors.join(",\\n") + " { display: none !important; }";
-
-            function tryInject() {
-                var target = document.head || document.documentElement;
-                if (target) {
-                    target.appendChild(style);
-                    return true;
-                }
-                return false;
-            }
-
-            if (!tryInject()) {
-                if (window.MutationObserver) {
-                    var observer = new MutationObserver(function() {
-                        if (tryInject()) {
-                            observer.disconnect();
-                        }
-                    });
-                    observer.observe(document, { childList: true, subtree: true });
-                }
-                document.addEventListener("DOMContentLoaded", tryInject, { once: true });
-            }
-        })();
-        """
-
-        if let data = jsonString.data(using: .utf8),
-           let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
-            self.lock.lock()
-            self.cosmeticRulesByDomain = dict
-            var count = 0
-            for (_, selectors) in dict {
-                count += selectors.components(separatedBy: ",\n").count
-            }
-            self.totalCosmeticSelectorsCount = count
-            self.lock.unlock()
+        self.lock.lock()
+        self.cosmeticRulesByDomain = dict
+        var count = 0
+        for (_, selectors) in dict {
+            count += selectors.components(separatedBy: ",\n").count
         }
-
-        self.cosmeticUserScript = WKUserScript(
-            source: jsSource,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: false
-        )
-        PerformanceMonitor.shared.log(event: "AdBlock", details: "Cosmetic filtering script loaded and compiled successfully")
+        self.totalCosmeticSelectorsCount = count
+        self.lock.unlock()
+        PerformanceMonitor.shared.log(event: "AdBlock", details: "Cosmetic filter store loaded successfully (\(count) selectors across \(dict.count) domains)")
     }
 
     private func loadScriptletFilterScript() {
@@ -173,14 +275,10 @@ public final class AdBlockController {
 
         guard let url = candidateURLs.compactMap({ $0 }).first(where: { FileManager.default.fileExists(atPath: $0.path) }),
               let jsonString = try? String(contentsOf: url, encoding: .utf8),
-              !jsonString.isEmpty else {
-            PerformanceMonitor.shared.log(event: "AdBlock", details: "Scriptlets file not found or empty")
-            return
-        }
-
-        guard let data = jsonString.data(using: .utf8),
+              !jsonString.isEmpty,
+              let data = jsonString.data(using: .utf8),
               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: [String]] else {
-            PerformanceMonitor.shared.log(event: "AdBlock", details: "Failed to deserialize scriptlets JSON")
+            PerformanceMonitor.shared.log(event: "AdBlock", details: "Scriptlets file not found or empty")
             return
         }
 
@@ -192,53 +290,7 @@ public final class AdBlockController {
         }
         self.totalScriptletSnippetsCount = totalSnippets
         self.lock.unlock()
-
-        var snippetGlobalId = 0
-        var domainBranches = ""
-        for (domain, snippets) in dict {
-            let quotedDomain = domain.debugDescription
-            domainBranches += "            if (domain === \(quotedDomain)) {\n"
-            for snippet in snippets {
-                snippetGlobalId += 1
-                domainBranches += """
-                    if (!window.__isa_scriptlets_run__[\(snippetGlobalId)]) {
-                        window.__isa_scriptlets_run__[\(snippetGlobalId)] = true;
-                        try {
-                            \(snippet)
-                        } catch (e) {
-                            console.error("[isa-adblock] Scriptlet execution failed on " + \(quotedDomain), e);
-                        }
-                    }
-
-                """
-            }
-            domainBranches += "            }\n"
-        }
-
-        let jsSource = """
-        (function() {
-            if (window.__isa_scriptlets_applied__) return;
-            window.__isa_scriptlets_applied__ = true;
-            window.__isa_scriptlets_run__ = window.__isa_scriptlets_run__ || {};
-            var scriptletGlobals = {};
-
-            var hostname = (window.location && window.location.hostname) ? window.location.hostname.toLowerCase() : "";
-            if (!hostname) return;
-
-            var parts = hostname.split(".");
-            for (var i = 0; i < parts.length - 1; i++) {
-                var domain = parts.slice(i).join(".");
-        \(domainBranches)
-            }
-        })();
-        """
-
-        self.scriptletUserScript = WKUserScript(
-            source: jsSource,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: false
-        )
-        PerformanceMonitor.shared.log(event: "AdBlock", details: "Scriptlet injection script loaded successfully (\(totalSnippets) snippets across \(dict.count) domains)")
+        PerformanceMonitor.shared.log(event: "AdBlock", details: "Scriptlet filter store loaded successfully (\(totalSnippets) snippets across \(dict.count) domains)")
     }
 
     private func startLoadingRuleListIfNeeded() {

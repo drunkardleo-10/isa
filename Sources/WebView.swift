@@ -64,6 +64,9 @@ struct WebView: NSViewRepresentable {
                     return
                 }
             }
+            if navigationAction.targetFrame?.isMainFrame == true, let host = navigationAction.request.url?.host {
+                AdBlockController.shared.updateUserScripts(for: webView, host: host)
+            }
             decisionHandler(.allow)
         }
 
@@ -105,6 +108,9 @@ struct WebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+            if let host = webView.url?.host {
+                AdBlockController.shared.updateUserScripts(for: webView, host: host)
+            }
             navigationStartTime = CFAbsoluteTimeGetCurrent()
             DispatchQueue.main.async {
                 self.tab?.isLoading = true
