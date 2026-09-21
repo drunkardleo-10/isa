@@ -20,8 +20,10 @@
 		78FD3D3F6111BD300BA2D66C /* AdBlockController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCFA86E23377365E7AD1051C /* AdBlockController.swift */; };
 		8AEEB3AD49CBBFA725FEE3CB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8CA7EC49AB41C0A1018C97C5 /* Assets.xcassets */; };
 		8D9201D9BDE2E3FD6A709BDA /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = B29158CC43F05B620ECEFFB4 /* AppIcon.icns */; };
+		9C00F60963F9716EAB67A05D /* PageCrashErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A05D00522B8F3F74083E1E2 /* PageCrashErrorView.swift */; };
 		A35520F95DD2AC73636C943C /* ShortcutsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DCDF41A4FBF447C8ACDE379 /* ShortcutsManager.swift */; };
 		B94B2EE6F4F138EC1B3A69E5 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B4688853A33527E069BA19 /* DownloadManager.swift */; };
+		CE127CA37A777F9C01C84EE0 /* AnimatedThemeToggle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB90322C5E9ED0F3B8A9B35F /* AnimatedThemeToggle.swift */; };
 		CE1833878057E0544DAEEE91 /* WebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6347A7548A0AB7642EBF924 /* WebView.swift */; };
 		D003D2BBA8D57BF873C46FD5 /* AdBlockStatusPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52EBA0EC0EF38D81593115C /* AdBlockStatusPopover.swift */; };
 		D4356FC567DDF9244C71A270 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6D6C2DA623C79C993BEC85B /* ContentView.swift */; };
@@ -35,6 +37,7 @@
 /* Begin PBXFileReference section */
 		2A08E9252783AEF945D7C938 /* ShortcutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsView.swift; sourceTree = "<group>"; };
 		2A2C691A1D2C45FCE3AF7760 /* BrowserApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserApp.swift; sourceTree = "<group>"; };
+		3A05D00522B8F3F74083E1E2 /* PageCrashErrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageCrashErrorView.swift; sourceTree = "<group>"; };
 		3D10A34ECBD5ABD2009E9C28 /* isa_browser.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = isa_browser.png; sourceTree = "<group>"; };
 		700B59D84A0CDB7D7762F1D3 /* home.svg */ = {isa = PBXFileReference; path = home.svg; sourceTree = "<group>"; };
 		72261784DAB32E409CD0F35A /* cosmetic-filters.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "cosmetic-filters.json"; sourceTree = "<group>"; };
@@ -49,6 +52,7 @@
 		B29158CC43F05B620ECEFFB4 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		B87198AD83D389275EE6991D /* DownloadsPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsPopoverView.swift; sourceTree = "<group>"; };
 		B8EFD2E4F2CEFAB67F563CA5 /* FindManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindManager.swift; sourceTree = "<group>"; };
+		BB90322C5E9ED0F3B8A9B35F /* AnimatedThemeToggle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimatedThemeToggle.swift; sourceTree = "<group>"; };
 		BE843F5CEBEB649CA5A2E830 /* BrowserViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserViewModel.swift; sourceTree = "<group>"; };
 		CCF736D58D4B1B9DD78B6DC7 /* reload.svg */ = {isa = PBXFileReference; path = reload.svg; sourceTree = "<group>"; };
 		CE6E82FB19D79DEA4ADB8901 /* FindBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindBarView.swift; sourceTree = "<group>"; };
@@ -63,6 +67,7 @@
 		5066DB9A88516AE2B881AA56 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				BB90322C5E9ED0F3B8A9B35F /* AnimatedThemeToggle.swift */,
 				2A2C691A1D2C45FCE3AF7760 /* BrowserApp.swift */,
 				BE843F5CEBEB649CA5A2E830 /* BrowserViewModel.swift */,
 				D6D6C2DA623C79C993BEC85B /* ContentView.swift */,
@@ -71,6 +76,7 @@
 				CE6E82FB19D79DEA4ADB8901 /* FindBarView.swift */,
 				B8EFD2E4F2CEFAB67F563CA5 /* FindManager.swift */,
 				F633ED0068EDAF6D7850773B /* HistoryManager.swift */,
+				3A05D00522B8F3F74083E1E2 /* PageCrashErrorView.swift */,
 				AA9867D2DC69FD0595345C1F /* PerformanceMonitor.swift */,
 				7DCDF41A4FBF447C8ACDE379 /* ShortcutsManager.swift */,
 				2A08E9252783AEF945D7C938 /* ShortcutsView.swift */,
@@ -210,6 +216,7 @@
 			files = (
 				78FD3D3F6111BD300BA2D66C /* AdBlockController.swift in Sources */,
 				D003D2BBA8D57BF873C46FD5 /* AdBlockStatusPopover.swift in Sources */,
+				CE127CA37A777F9C01C84EE0 /* AnimatedThemeToggle.swift in Sources */,
 				09EB134DA3A87B4FF18C5A46 /* BrowserApp.swift in Sources */,
 				2E9935927389BC58B3C79634 /* BrowserViewModel.swift in Sources */,
 				D4356FC567DDF9244C71A270 /* ContentView.swift in Sources */,
@@ -218,6 +225,7 @@
 				6527559B941DB438565B9CE8 /* FindBarView.swift in Sources */,
 				297E923BAA6321BA4C2A4429 /* FindManager.swift in Sources */,
 				455AF9614672E328419D9FD9 /* HistoryManager.swift in Sources */,
+				9C00F60963F9716EAB67A05D /* PageCrashErrorView.swift in Sources */,
 				0AC724332C38C09C3947F4A7 /* PerformanceMonitor.swift in Sources */,
 				A35520F95DD2AC73636C943C /* ShortcutsManager.swift in Sources */,
 				E9636DAA3EBF1F919D9C988B /* ShortcutsView.swift in Sources */,
