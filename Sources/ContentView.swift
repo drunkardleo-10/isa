@@ -633,6 +633,54 @@ struct TabPillInteractionView: NSViewRepresentable {
     }
 }
 
+struct GooeyBridge: Shape {
+    var distance: CGFloat
+
+    var animatableData: CGFloat {
+        get { distance }
+        set { distance = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let r: CGFloat = 22.0
+        guard distance > 0.5 else { return path }
+
+        let maxDist: CGFloat = 46.0
+        let t = min(distance / maxDist, 1.0)
+        guard t < 0.99 else { return path }
+
+        let cy = r
+
+        let attachHalf = r * pow(1.0 - t, 0.35)
+        let waistHalf = attachHalf * pow(1.0 - t, 0.7) * 0.55
+        guard attachHalf > 0.8 else { return path }
+
+        let ang1 = asin(min(1.0, attachHalf / r))
+        let lx = r + r * cos(ang1)
+
+        let ang2 = asin(min(1.0, attachHalf / r))
+        let rx = (distance + r) - r * cos(ang2)
+
+        let midX = (lx + rx) / 2.0
+
+        path.move(to: CGPoint(x: lx, y: cy - attachHalf))
+        path.addCurve(
+            to: CGPoint(x: rx, y: cy - attachHalf),
+            control1: CGPoint(x: midX, y: cy - waistHalf),
+            control2: CGPoint(x: midX, y: cy - waistHalf)
+        )
+        path.addLine(to: CGPoint(x: rx, y: cy + attachHalf))
+        path.addCurve(
+            to: CGPoint(x: lx, y: cy + attachHalf),
+            control1: CGPoint(x: midX, y: cy + waistHalf),
+            control2: CGPoint(x: midX, y: cy + waistHalf)
+        )
+        path.closeSubpath()
+        return path
+    }
+}
+
 struct ActiveTabOverlayView: View {
     @ObservedObject var tab: Tab
     @ObservedObject var viewModel: BrowserViewModel
@@ -643,6 +691,22 @@ struct ActiveTabOverlayView: View {
     @State private var selectedSuggestionIndex: Int = -1
     @State private var isAddShortcutPresented: Bool = false
     @State private var editingShortcut: ShortcutItem? = nil
+    @State private var isExpanded: Bool = true
+    @State private var expandProgress: CGFloat = 1.0
+    @State private var isIdleHovered: Bool = false
+    @State private var inactivityTask: Task<Void, Never>? = nil
+
+    private var pillOffset: CGFloat {
+        expandProgress * 52.0
+    }
+
+    private var currentPillWidth: CGFloat {
+        260.0 + 168.0 * expandProgress
+    }
+
+    private var containerWidth: CGFloat {
+        pillOffset + currentPillWidth
+    }
 
     var body: some View {
         if tab.isNewTabState || tab.isAddressOverlayPresented {
@@ -658,7 +722,7 @@ struct ActiveTabOverlayView: View {
                         .contentShape(Rectangle())
                         .onTapGesture {
                             if !isAddShortcutPresented {
-                                isFocused = true
+                                dismissOrCollapseSearchBar()
                             }
                         }
                 }
@@ -667,50 +731,94 @@ struct ActiveTabOverlayView: View {
                     Spacer()
                         .frame(height: 140)
 
-                    HStack(spacing: 10) {
+                    ZStack(alignment: .leading) {
+                        Circle()
+                            .fill(Color(nsColor: .controlBackgroundColor))
+                            .frame(width: 44, height: 44)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+                            )
+                            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
+
+                        GooeyBridge(distance: pillOffset)
+                            .fill(Color(nsColor: .controlBackgroundColor))
+
+                        RoundedRectangle(cornerRadius: 22)
+                            .fill(Color(nsColor: .controlBackgroundColor))
+                            .frame(width: max(44, currentPillWidth), height: 44)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 22)
+                                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+                            )
+                            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
+                            .padding(.leading, pillOffset)
+
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(.secondary)
-                            .font(.system(size: 14))
+                            .font(.system(size: 14, weight: .medium))
+                            .frame(width: 44, height: 44)
 
-                        TextField("Enter a web address", text: $addressInput)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 15))
-                            .focused($isFocused)
-                            .onSubmit {
-                                if selectedSuggestionIndex >= 0 && selectedSuggestionIndex < suggestions.count {
-                                    navigateWithSuggestion(suggestions[selectedSuggestionIndex])
-                                } else {
-                                    submitNavigation()
-                                }
-                            }
-                            .onExitCommand {
-                                if !tab.isNewTabState {
-                                    viewModel.dismissAddressBar()
-                                }
-                            }
-
-                        if !addressInput.isEmpty {
-                            Button(action: {
-                                addressInput = ""
-                                suggestions = []
-                                selectedSuggestionIndex = -1
-                            }) {
-                                Image(systemName: "xmark.circle.fill")
+                        ZStack(alignment: .leading) {
+                            if expandProgress < 0.35 && tab.isNewTabState {
+                                Text("Search google or websites.")
+                                    .font(.system(size: 15))
                                     .foregroundColor(.secondary)
-                                    .font(.system(size: 13))
+                                    .padding(.leading, 42)
+                                    .opacity(Double(1.0 - expandProgress / 0.35))
                             }
-                            .buttonStyle(.plain)
+
+                            HStack(spacing: 8) {
+                                TextField("Search google or websites.", text: $addressInput)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 15))
+                                    .autocorrectionDisabled(true)
+                                    .focused($isFocused)
+                                    .onSubmit {
+                                        if selectedSuggestionIndex >= 0 && selectedSuggestionIndex < suggestions.count {
+                                            navigateWithSuggestion(suggestions[selectedSuggestionIndex])
+                                        } else {
+                                            submitNavigation()
+                                        }
+                                    }
+                                    .onExitCommand {
+                                        dismissOrCollapseSearchBar()
+                                    }
+
+                                if !addressInput.isEmpty {
+                                    Button(action: {
+                                        addressInput = ""
+                                        suggestions = []
+                                        selectedSuggestionIndex = -1
+                                        resetInactivityTimer()
+                                    }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundColor(.secondary)
+                                            .font(.system(size: 13))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .opacity(expandProgress >= 0.99 ? 1.0 : Double(max(0, min(1.0, (expandProgress - 0.2) / 0.8))))
+                            .allowsHitTesting(expandProgress > 0.5 || !tab.isNewTabState)
+                        }
+                        .frame(width: max(44, currentPillWidth), height: 44, alignment: .leading)
+                        .padding(.leading, pillOffset)
+                    }
+                    .frame(width: containerWidth, height: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if expandProgress < 0.5 && tab.isNewTabState {
+                            expandSearchBar()
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .frame(width: 480, height: 46)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .cornerRadius(12)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-                    )
-                    .shadow(color: Color.black.opacity(0.08), radius: 16, x: 0, y: 8)
+                    .onHover { hovering in
+                        isIdleHovered = hovering
+                        if hovering {
+                            resetInactivityTimer()
+                        }
+                    }
 
                     if !suggestions.isEmpty {
                         VStack(spacing: 0) {
@@ -728,7 +836,7 @@ struct ActiveTabOverlayView: View {
                             }
                         }
                         .padding(.vertical, 4)
-                        .frame(width: 480)
+                        .frame(width: max(44, currentPillWidth))
                         .background(Color(nsColor: .controlBackgroundColor))
                         .cornerRadius(12)
                         .overlay(
@@ -736,6 +844,7 @@ struct ActiveTabOverlayView: View {
                                 .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
                         )
                         .shadow(color: Color.black.opacity(0.08), radius: 16, x: 0, y: 8)
+                        .frame(width: containerWidth, alignment: .trailing)
                         .transition(
                             .asymmetric(
                                 insertion: .opacity
@@ -745,6 +854,7 @@ struct ActiveTabOverlayView: View {
                                     .combined(with: .scale(scale: 0.99, anchor: .top))
                             )
                         )
+                        .animation(.spring(response: 0.18, dampingFraction: 0.86), value: suggestions.map { $0.id })
                     } else if tab.isNewTabState {
                         ShortcutsSectionView(
                             viewModel: viewModel,
@@ -768,7 +878,6 @@ struct ActiveTabOverlayView: View {
 
                     Spacer()
                 }
-                .animation(.spring(response: 0.18, dampingFraction: 0.86), value: suggestions.map { $0.id })
 
                 if isAddShortcutPresented {
                     Color.black.opacity(0.25)
@@ -817,15 +926,22 @@ struct ActiveTabOverlayView: View {
             }
             .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .center)))
             .onAppear {
+                expandProgress = 1.0
+                isExpanded = true
                 syncInput()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                     isFocused = true
                 }
+                resetInactivityTimer()
                 eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                     if isAddShortcutPresented {
                         return event
                     }
                     if tab.isNewTabState || tab.isAddressOverlayPresented {
+                        if event.keyCode == 53 {
+                            dismissOrCollapseSearchBar()
+                            return nil
+                        }
                         if event.keyCode == 125 {
                             if !suggestions.isEmpty {
                                 withAnimation(.easeInOut(duration: 0.08)) {
@@ -845,7 +961,11 @@ struct ActiveTabOverlayView: View {
                             if let chars = event.characters, !chars.isEmpty,
                                !event.modifierFlags.contains(.command),
                                !event.modifierFlags.contains(.control) {
-                                isFocused = true
+                                if expandProgress < 0.5 {
+                                    expandSearchBar()
+                                } else {
+                                    isFocused = true
+                                }
                             }
                         }
                     }
@@ -853,20 +973,23 @@ struct ActiveTabOverlayView: View {
                 }
             }
             .onDisappear {
+                inactivityTask?.cancel()
+                inactivityTask = nil
                 if let monitor = eventMonitor {
                     NSEvent.removeMonitor(monitor)
                     eventMonitor = nil
                 }
             }
             .onChange(of: addressInput) { _, newValue in
-                tab.addressText = newValue
                 let text = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 if text.isEmpty {
+                    resetInactivityTimer()
                     withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
                         suggestions = []
                         selectedSuggestionIndex = -1
                     }
                 } else {
+                    inactivityTask?.cancel()
                     let local = HistoryManager.shared.localSuggestions(for: text)
                     withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
                         suggestions = local
@@ -881,16 +1004,73 @@ struct ActiveTabOverlayView: View {
                 }
             }
             .onChange(of: tab.id) {
+                expandProgress = 1.0
+                isExpanded = true
                 syncInput()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                     isFocused = true
                 }
+                resetInactivityTimer()
             }
             .onChange(of: tab.isAddressOverlayPresented) { _, isPresented in
                 if isPresented {
+                    expandProgress = 1.0
+                    isExpanded = true
                     syncInput()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                         isFocused = true
+                    }
+                    resetInactivityTimer()
+                } else {
+                    inactivityTask?.cancel()
+                }
+            }
+        }
+    }
+
+    private func expandSearchBar() {
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+            expandProgress = 1.0
+            isExpanded = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            isFocused = true
+        }
+        resetInactivityTimer()
+    }
+
+    private func dismissOrCollapseSearchBar() {
+        if !tab.isNewTabState {
+            viewModel.dismissAddressBar()
+        } else {
+            inactivityTask?.cancel()
+            inactivityTask = nil
+            addressInput = ""
+            suggestions = []
+            selectedSuggestionIndex = -1
+            isFocused = false
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.62)) {
+                expandProgress = 0.0
+                isExpanded = false
+            }
+        }
+    }
+
+    private func collapseSearchBar() {
+        guard tab.isNewTabState && addressInput.isEmpty else { return }
+        dismissOrCollapseSearchBar()
+    }
+
+    private func resetInactivityTimer() {
+        inactivityTask?.cancel()
+        guard tab.isNewTabState else { return }
+        guard addressInput.isEmpty else { return }
+        inactivityTask = Task {
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if !Task.isCancelled {
+                await MainActor.run {
+                    if addressInput.isEmpty && tab.isNewTabState {
+                        collapseSearchBar()
                     }
                 }
             }
@@ -906,6 +1086,7 @@ struct ActiveTabOverlayView: View {
     }
 
     private func navigateWithSuggestion(_ item: SuggestionItem) {
+        inactivityTask?.cancel()
         withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
             suggestions = []
             selectedSuggestionIndex = -1
@@ -917,6 +1098,7 @@ struct ActiveTabOverlayView: View {
     private func submitNavigation() {
         let text = addressInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        inactivityTask?.cancel()
         withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
             suggestions = []
             selectedSuggestionIndex = -1
