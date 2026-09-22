@@ -33,10 +33,9 @@ final class ShortcutsManager: ObservableObject {
             self.shortcuts = decoded
         } else {
             self.shortcuts = [
-                ShortcutItem(title: "GitHub", url: "https://github.com"),
-                ShortcutItem(title: "YouTube", url: "https://youtube.com"),
-                ShortcutItem(title: "Reddit", url: "https://reddit.com"),
-                ShortcutItem(title: "Wikipedia", url: "https://wikipedia.org")
+                ShortcutItem(title: "X", url: "https://x.com"),
+                ShortcutItem(title: "github", url: "https://github.com"),
+                ShortcutItem(title: "Adblocker", url: "https://adblock.turtlecute.org/")
             ]
             saveShortcuts()
         }
@@ -49,6 +48,7 @@ final class ShortcutsManager: ObservableObject {
     func saveShortcuts() {
         if let data = try? JSONEncoder().encode(shortcuts) {
             UserDefaults.standard.set(data, forKey: storageKey)
+            UserDefaults.standard.synchronize()
         }
     }
 

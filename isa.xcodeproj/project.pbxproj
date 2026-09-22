@@ -17,6 +17,7 @@
 		4EEA959AC96C786DCE929A72 /* content-blocker.json in Resources */ = {isa = PBXBuildFile; fileRef = F0A52A1F857D2F78C1C727B7 /* content-blocker.json */; };
 		59F91C1365AD69A23C4D6FC6 /* reload.svg in Resources */ = {isa = PBXBuildFile; fileRef = CCF736D58D4B1B9DD78B6DC7 /* reload.svg */; };
 		6527559B941DB438565B9CE8 /* FindBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE6E82FB19D79DEA4ADB8901 /* FindBarView.swift */; };
+		68B047D633578BB33BF44EC1 /* scriptlets.json in Resources */ = {isa = PBXBuildFile; fileRef = 04F3E1F306DEDFFEC02F3FC1 /* scriptlets.json */; };
 		78FD3D3F6111BD300BA2D66C /* AdBlockController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCFA86E23377365E7AD1051C /* AdBlockController.swift */; };
 		8AEEB3AD49CBBFA725FEE3CB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8CA7EC49AB41C0A1018C97C5 /* Assets.xcassets */; };
 		8D9201D9BDE2E3FD6A709BDA /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = B29158CC43F05B620ECEFFB4 /* AppIcon.icns */; };
@@ -35,6 +36,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		04F3E1F306DEDFFEC02F3FC1 /* scriptlets.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = scriptlets.json; sourceTree = "<group>"; };
 		2A08E9252783AEF945D7C938 /* ShortcutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsView.swift; sourceTree = "<group>"; };
 		2A2C691A1D2C45FCE3AF7760 /* BrowserApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserApp.swift; sourceTree = "<group>"; };
 		3A05D00522B8F3F74083E1E2 /* PageCrashErrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageCrashErrorView.swift; sourceTree = "<group>"; };
@@ -124,6 +126,7 @@
 			children = (
 				F0A52A1F857D2F78C1C727B7 /* content-blocker.json */,
 				72261784DAB32E409CD0F35A /* cosmetic-filters.json */,
+				04F3E1F306DEDFFEC02F3FC1 /* scriptlets.json */,
 			);
 			path = rules;
 			sourceTree = "<group>";
@@ -204,6 +207,7 @@
 				18CECF81E2F415A5079FBF21 /* home.svg in Resources */,
 				D988EAF27CFED58E485DD3C9 /* isa_browser.png in Resources */,
 				59F91C1365AD69A23C4D6FC6 /* reload.svg in Resources */,
+				68B047D633578BB33BF44EC1 /* scriptlets.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
