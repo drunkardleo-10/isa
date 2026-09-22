@@ -71,16 +71,10 @@ struct WebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
-            if let httpResponse = navigationResponse.response as? HTTPURLResponse {
-                if let disposition = httpResponse.value(forHTTPHeaderField: "Content-Disposition"),
-                   disposition.lowercased().contains("attachment") {
-                    print("[isa] [Download] Content-Disposition: attachment detected for \(httpResponse.url?.absoluteString ?? "")")
-                    decisionHandler(.download)
-                    return
-                }
-            }
-            if !navigationResponse.canShowMIMEType {
-                print("[isa] [Download] WKWebView cannot show MIME type '\(navigationResponse.response.mimeType ?? "unknown")'. Triggering download...")
+            if let httpResponse = navigationResponse.response as? HTTPURLResponse,
+               let disposition = httpResponse.value(forHTTPHeaderField: "Content-Disposition"),
+               disposition.lowercased().contains("attachment") {
+                print("[isa] [Download] Content-Disposition: attachment detected for \(httpResponse.url?.absoluteString ?? "")")
                 decisionHandler(.download)
                 return
             }
@@ -108,9 +102,6 @@ struct WebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-            if let host = webView.url?.host {
-                AdBlockController.shared.updateUserScripts(for: webView, host: host)
-            }
             navigationStartTime = CFAbsoluteTimeGetCurrent()
             DispatchQueue.main.async {
                 self.tab?.pageError = nil
@@ -204,6 +195,9 @@ struct WebView: NSViewRepresentable {
                 if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
                     return
                 }
+                if nsError.domain == "WebKitErrorDomain" && nsError.code == 102 {
+                    return
+                }
                 let host = webView.url?.host ?? self.tab?.currentURL?.host ?? ""
                 self.tab?.pageError = PageErrorInfo.from(error: error, url: webView.url ?? self.tab?.currentURL, host: host)
             }
@@ -215,6 +209,9 @@ struct WebView: NSViewRepresentable {
                 self.tab?.isLoading = false
                 let nsError = error as NSError
                 if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
+                    return
+                }
+                if nsError.domain == "WebKitErrorDomain" && nsError.code == 102 {
                     return
                 }
                 let host = webView.url?.host ?? self.tab?.currentURL?.host ?? ""

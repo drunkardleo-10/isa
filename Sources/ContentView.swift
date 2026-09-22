@@ -525,6 +525,7 @@ struct NonDraggableBackground: NSViewRepresentable {
 struct TabPillInteractionView: NSViewRepresentable {
     let tabWidth: CGFloat
     let showsCloseButton: Bool
+    let showsSpeakerButton: Bool
     let onDragStarted: () -> Void
     let onDragChanged: (CGFloat) -> Void
     let onDragEnded: () -> Void
@@ -544,6 +545,7 @@ struct TabPillInteractionView: NSViewRepresentable {
     private func updateView(_ view: PillNSView) {
         view.tabWidth = tabWidth
         view.showsCloseButton = showsCloseButton
+        view.showsSpeakerButton = showsSpeakerButton
         view.onDragStarted = onDragStarted
         view.onDragChanged = onDragChanged
         view.onDragEnded = onDragEnded
@@ -554,6 +556,7 @@ struct TabPillInteractionView: NSViewRepresentable {
     final class PillNSView: NSView {
         var tabWidth: CGFloat = 100
         var showsCloseButton: Bool = false
+        var showsSpeakerButton: Bool = false
         var onDragStarted: (() -> Void)?
         var onDragChanged: ((CGFloat) -> Void)?
         var onDragEnded: (() -> Void)?
@@ -578,7 +581,13 @@ struct TabPillInteractionView: NSViewRepresentable {
         override func hitTest(_ point: NSPoint) -> NSView? {
             guard let hit = super.hitTest(point) else { return nil }
             let localPoint = superview != nil ? convert(point, from: superview) : point
-            if showsCloseButton && localPoint.x >= (bounds.width - 22) {
+            var interactiveTrailingWidth: CGFloat = 0
+            if showsCloseButton && showsSpeakerButton {
+                interactiveTrailingWidth = 42
+            } else if showsCloseButton || showsSpeakerButton {
+                interactiveTrailingWidth = 24
+            }
+            if interactiveTrailingWidth > 0 && localPoint.x >= (bounds.width - interactiveTrailingWidth) {
                 return nil
             }
             return hit
@@ -1160,6 +1169,28 @@ struct SuggestionRowView: View {
     }
 }
 
+struct AnimatedSpeakerIcon: View {
+    let isMuted: Bool
+
+    var body: some View {
+        ZStack {
+            Image(systemName: "speaker.wave.2.fill")
+                .font(.system(size: 8, weight: .semibold))
+                .scaleEffect(isMuted ? 0.001 : 1.0)
+                .opacity(isMuted ? 0.0 : 1.0)
+                .rotationEffect(.degrees(isMuted ? -35 : 0))
+
+            Image(systemName: "speaker.slash.fill")
+                .font(.system(size: 8, weight: .semibold))
+                .scaleEffect(isMuted ? 1.0 : 0.001)
+                .opacity(isMuted ? 1.0 : 0.0)
+                .rotationEffect(.degrees(isMuted ? 0 : 35))
+        }
+        .frame(width: 15, height: 15)
+        .animation(.spring(response: 0.45, dampingFraction: 0.72), value: isMuted)
+    }
+}
+
 struct TabPillView: View {
     @ObservedObject var tab: Tab
     @ObservedObject var viewModel: BrowserViewModel
@@ -1175,9 +1206,28 @@ struct TabPillView: View {
 
     @State private var isHovered: Bool = false
     @State private var isCloseHovered: Bool = false
+    @State private var isSpeakerHovered: Bool = false
 
     private var showsTitle: Bool {
         tabWidth >= 76
+    }
+
+    private var showsSpeakerButton: Bool {
+        guard !tab.isNewTabState else { return false }
+        if tab.isPlayingMedia {
+            if tabWidth >= 66 {
+                return true
+            } else if tabWidth >= 42 {
+                return !showsCloseButton || !isHovered
+            }
+        } else if tab.isMuted && tab.hasPlayedMedia {
+            if tabWidth >= 66 {
+                return true
+            } else if tabWidth >= 42 {
+                return !showsCloseButton || !isHovered
+            }
+        }
+        return false
     }
 
     private var showsCloseButton: Bool {
@@ -1187,6 +1237,15 @@ struct TabPillView: View {
             return isHovered
         }
         return false
+    }
+
+    private var trailingPadding: CGFloat {
+        if showsCloseButton && showsSpeakerButton {
+            return 38
+        } else if showsCloseButton || showsSpeakerButton {
+            return 20
+        }
+        return 4
     }
 
     private var iconSize: CGFloat {
@@ -1261,7 +1320,7 @@ struct TabPillView: View {
                 }
             }
             .padding(.leading, showsTitle ? 8 : (showsCloseButton ? 4 : 2))
-            .padding(.trailing, showsCloseButton ? 20 : 4)
+            .padding(.trailing, trailingPadding)
             .frame(width: tabWidth, height: 26, alignment: showsTitle ? .leading : .center)
             .clipped()
             .allowsHitTesting(false)
@@ -1269,6 +1328,7 @@ struct TabPillView: View {
             TabPillInteractionView(
                 tabWidth: tabWidth,
                 showsCloseButton: showsCloseButton,
+                showsSpeakerButton: showsSpeakerButton,
                 onDragStarted: onDragStarted,
                 onDragChanged: onDragChanged,
                 onDragEnded: onDragEnded,
@@ -1280,28 +1340,52 @@ struct TabPillView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if showsCloseButton {
-                HStack {
+            if showsSpeakerButton || showsCloseButton {
+                HStack(spacing: 3) {
                     Spacer()
-                    Button(action: {
-                        PerformanceMonitor.shared.log(event: "Click", details: "Tab close button: \"\(displayTitle)\"")
-                        viewModel.closeTab(id: tab.id)
-                    }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 7, weight: .bold))
-                            .foregroundColor(.secondary)
-                            .frame(width: 14, height: 14)
-                            .background(
-                                Circle().fill(Color.primary.opacity(isCloseHovered ? 0.12 : 0))
-                            )
-                            .contentShape(Rectangle())
+
+                    if showsSpeakerButton {
+                        Button(action: {
+                            PerformanceMonitor.shared.log(event: "Click", details: "Tab speaker button clicked: \"\(displayTitle)\" (muted: \(tab.isMuted))")
+                            withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) {
+                                viewModel.toggleMute(tab: tab)
+                            }
+                        }) {
+                            AnimatedSpeakerIcon(isMuted: tab.isMuted)
+                                .foregroundColor(tab.isMuted ? Color.secondary.opacity(0.85) : (isSelected ? Color.primary : Color.primary.opacity(0.85)))
+                                .background(
+                                    Circle().fill(Color.primary.opacity(isSpeakerHovered ? 0.12 : 0))
+                                )
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(tab.isMuted ? "Unmute tab" : "Mute tab")
+                        .onHover { hovering in
+                            isSpeakerHovered = hovering
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .padding(.trailing, 4)
-                    .onHover { hovering in
-                        isCloseHovered = hovering
+
+                    if showsCloseButton {
+                        Button(action: {
+                            PerformanceMonitor.shared.log(event: "Click", details: "Tab close button: \"\(displayTitle)\"")
+                            viewModel.closeTab(id: tab.id)
+                        }) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundColor(.secondary)
+                                .frame(width: 14, height: 14)
+                                .background(
+                                    Circle().fill(Color.primary.opacity(isCloseHovered ? 0.12 : 0))
+                                )
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .onHover { hovering in
+                            isCloseHovered = hovering
+                        }
                     }
                 }
+                .padding(.trailing, 4)
             }
         }
         .frame(width: tabWidth, height: 26)
@@ -1309,9 +1393,43 @@ struct TabPillView: View {
         .shadow(color: Color.black.opacity(isBeingDragged ? 0.18 : 0), radius: isBeingDragged ? 5 : 0, x: 0, y: isBeingDragged ? 2 : 0)
         .animation(.spring(response: 0.3, dampingFraction: 0.82), value: tabWidth)
         .help(displayTitle)
+        .contextMenu {
+            Button {
+                viewModel.toggleMute(tab: tab)
+            } label: {
+                Label(tab.isMuted ? "Unmute Tab" : "Mute Tab", systemImage: tab.isMuted ? "speaker.wave.2" : "speaker.slash")
+            }
+
+            Divider()
+
+            Button {
+                viewModel.closeTab(id: tab.id)
+            } label: {
+                Label("Close Tab", systemImage: "xmark")
+            }
+
+            Button {
+                viewModel.closeOtherTabs(id: tab.id)
+            } label: {
+                Label("Close Other Tabs", systemImage: "xmark.circle")
+            }
+
+            Button {
+                viewModel.duplicateTab(id: tab.id)
+            } label: {
+                Label("Duplicate Tab", systemImage: "plus.square.on.square")
+            }
+
+            Button {
+                tab.reload()
+            } label: {
+                Label("Reload Tab", systemImage: "arrow.clockwise")
+            }
+        }
         .onHover { hovering in
             isHovered = hovering
         }
+
     }
 
     private var displayTitle: String {

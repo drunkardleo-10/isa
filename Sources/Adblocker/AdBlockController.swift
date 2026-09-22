@@ -121,6 +121,8 @@ public final class AdBlockController {
         ucc.addUserScript(backspaceScript)
         let linkClickScript = WKUserScript(source: Self.linkClickScriptSource, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         ucc.addUserScript(linkClickScript)
+        let mediaScript = WKUserScript(source: Tab.mediaScriptSource, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        ucc.addUserScript(mediaScript)
 
         if ProcessInfo.processInfo.environment["ISA_DISABLE_ADBLOCK"] != "1" &&
            !ProcessInfo.processInfo.arguments.contains("--no-adblock") {

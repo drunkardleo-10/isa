@@ -32,6 +32,13 @@ struct BrowserApp: App {
             }
 
             CommandMenu("Tab") {
+                Button(viewModel.activeTab.isMuted ? "Unmute Tab" : "Mute Tab") {
+                    viewModel.toggleMuteActiveTab()
+                }
+                .keyboardShortcut("m", modifiers: [.command, .shift])
+
+                Divider()
+
                 Button("Run 25 Tab Benchmark") {
                     appDelegate.runPerfSequence()
                 }
@@ -41,6 +48,7 @@ struct BrowserApp: App {
                     viewModel.openSampleTabs(count: 25)
                 }
                 .keyboardShortcut("u", modifiers: [.command, .shift])
+
 
                 Divider()
 

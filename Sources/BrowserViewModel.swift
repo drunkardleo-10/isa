@@ -90,6 +90,42 @@ final class TabScriptHandler: NSObject, WKScriptMessageHandler {
             DispatchQueue.main.async {
                 self.tab?.onOpenNewTab?(url)
             }
+        } else if message.name == "mediaPlaybackState", let dict = message.body as? [String: Any], let isPlaying = dict["isPlaying"] as? Bool {
+            DispatchQueue.main.async {
+                self.tab?.isDOMPlayingMedia = isPlaying
+                self.tab?.updateMediaPlaybackState()
+            }
+        }
+    }
+}
+
+private final class WebAudioObserver: NSObject {
+    private weak var tab: Tab?
+    private weak var webView: WKWebView?
+
+    init(tab: Tab, webView: WKWebView) {
+        self.tab = tab
+        self.webView = webView
+        super.init()
+        webView.addObserver(self, forKeyPath: "_isPlayingAudio", options: [.new], context: nil)
+    }
+
+    deinit {
+        webView?.removeObserver(self, forKeyPath: "_isPlayingAudio")
+    }
+
+    override func observeValue(
+        forKeyPath keyPath: String?,
+        of object: Any?,
+        change: [NSKeyValueChangeKey : Any]?,
+        context: UnsafeMutableRawPointer?
+    ) {
+        guard keyPath == "_isPlayingAudio" else { return }
+        let isPlaying = change?[.newKey] as? Bool ?? false
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let tab = self.tab else { return }
+            tab.isWebKitPlayingAudio = isPlaying
+            tab.updateMediaPlaybackState()
         }
     }
 }
@@ -124,16 +160,48 @@ final class Tab: Identifiable, ObservableObject {
     @Published var isSleeping: Bool = false
     @Published var isSnapshotting: Bool = false
     @Published var isReloading: Bool = false
+    @Published var isMuted: Bool = false
+    @Published var isPlayingMedia: Bool = false
+    @Published var hasPlayedMedia: Bool = false
+    var isWebKitPlayingAudio: Bool = false
+    var isDOMPlayingMedia: Bool = false
+
     var savedScrollY: CGFloat = 0
     var savedInteractionState: Any? = nil
     var lastActiveTime: Date = Date()
-    var isPlayingAudioOverride: Bool = false
     var isPlayingAudio: Bool {
-        if isPlayingAudioOverride { return true }
-        if let wv = webView, let val = (wv as AnyObject).value(forKey: "_isPlayingAudio") as? Bool, val {
-            return true
+        isPlayingMedia || isWebKitPlayingAudio
+    }
+
+    func toggleMute() {
+        setMuted(!isMuted)
+    }
+
+    func setMuted(_ muted: Bool) {
+        guard isMuted != muted else { return }
+        isMuted = muted
+        applyMutedState()
+        PerformanceMonitor.shared.log(event: "Mute", details: "Tab \(id.uuidString.prefix(6)) setMuted(\(muted))")
+    }
+
+    func applyMutedState() {
+        guard let wv = webView else { return }
+        typealias SetPageMutedFunc = @convention(c) (AnyObject, Selector, UInt) -> Void
+        if let method = class_getInstanceMethod(type(of: wv), NSSelectorFromString("_setPageMuted:")) {
+            let imp = method_getImplementation(method)
+            let fn = unsafeBitCast(imp, to: SetPageMutedFunc.self)
+            fn(wv, NSSelectorFromString("_setPageMuted:"), isMuted ? 1 : 0)
         }
-        return false
+    }
+
+    func updateMediaPlaybackState() {
+        let playing = isDOMPlayingMedia || isWebKitPlayingAudio
+        if playing {
+            hasPlayedMedia = true
+        }
+        if isPlayingMedia != playing {
+            isPlayingMedia = playing
+        }
     }
 
     func reload() {
@@ -154,6 +222,7 @@ final class Tab: Identifiable, ObservableObject {
     private var canGoBackObservation: NSKeyValueObservation?
     private var canGoForwardObservation: NSKeyValueObservation?
     private var loadingObservation: NSKeyValueObservation?
+    private var audioObserver: WebAudioObserver?
 
     deinit {
         invalidateObservations()
@@ -162,6 +231,8 @@ final class Tab: Identifiable, ObservableObject {
 
     private func setupObservations(for webView: WKWebView) {
         invalidateObservations()
+        audioObserver = WebAudioObserver(tab: self, webView: webView)
+
         titleObservation = webView.observe(\.title, options: [.initial, .new]) { [weak self] wv, _ in
             guard let self = self else { return }
             let rawTitle = wv.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -181,6 +252,11 @@ final class Tab: Identifiable, ObservableObject {
                 if self.currentURL != newURL {
                     let hostChanged = self.currentURL?.host != newURL.host
                     self.currentURL = newURL
+                    self.isDOMPlayingMedia = false
+                    self.updateMediaPlaybackState()
+                    if self.isMuted {
+                        self.applyMutedState()
+                    }
                     if hostChanged {
                         self.favicon = nil
                     }
@@ -215,6 +291,9 @@ final class Tab: Identifiable, ObservableObject {
                 if self.isLoading != wv.isLoading {
                     self.isLoading = wv.isLoading
                     if !wv.isLoading {
+                        if self.isMuted {
+                            self.applyMutedState()
+                        }
                         self.onLoadingFinished?()
                     }
                 }
@@ -233,17 +312,60 @@ final class Tab: Identifiable, ObservableObject {
         canGoForwardObservation = nil
         loadingObservation?.invalidate()
         loadingObservation = nil
+        audioObserver = nil
     }
 
     var isNewTabState: Bool {
         currentURL == nil || currentURL?.absoluteString == "about:blank"
     }
 
+    static let mediaScriptSource = """
+    (function() {
+        if (window.__isaMediaWatcherInstalled) return;
+        window.__isaMediaWatcherInstalled = true;
+
+        var lastReportedPlaying = null;
+
+        function checkMedia() {
+            try {
+                var mediaList = document.querySelectorAll('video, audio');
+                var playing = false;
+                for (var i = 0; i < mediaList.length; i++) {
+                    var el = mediaList[i];
+                    if (!el.paused && !el.ended && el.readyState > 1) {
+                        playing = true;
+                        break;
+                    }
+                }
+                if (playing !== lastReportedPlaying) {
+                    lastReportedPlaying = playing;
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.mediaPlaybackState) {
+                        window.webkit.messageHandlers.mediaPlaybackState.postMessage({ isPlaying: playing });
+                    }
+                }
+            } catch(e) {}
+        }
+
+        var events = ['play', 'playing', 'pause', 'ended', 'emptied'];
+        for (var i = 0; i < events.length; i++) {
+            window.addEventListener(events[i], function() {
+                setTimeout(checkMedia, 50);
+            }, true);
+        }
+    })();
+    """
+
+    static var mediaScript: WKUserScript {
+        WKUserScript(
+            source: mediaScriptSource,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+    }
+
     @discardableResult
     func ensureWebView(caller: String = #function) -> WKWebView {
-        if let existing = webView {
-            return existing
-        }
+        if let existing = webView { return existing }
         PerformanceMonitor.shared.log(event: "WebKitInit", details: "Instantiating WKWebView for tab \(id.uuidString.prefix(6)) from [\(caller)]")
         let configuration = WKWebViewConfiguration()
         configuration.processPool = BrowserViewModel.sharedProcessPool
@@ -266,12 +388,19 @@ final class Tab: Identifiable, ObservableObject {
             forMainFrameOnly: false
         )
         configuration.userContentController.addUserScript(linkClickScript)
+
+        configuration.userContentController.addUserScript(Tab.mediaScript)
+        configuration.userContentController.add(TabScriptHandler(tab: self), name: "mediaPlaybackState")
+
         AdBlockController.apply(to: configuration, host: currentURL?.host)
         let newWebView = BrowserWebView(frame: .zero, configuration: configuration)
         newWebView.tab = self
         newWebView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
         self.webView = newWebView
         setupObservations(for: newWebView)
+        if isMuted {
+            applyMutedState()
+        }
         return newWebView
     }
 
@@ -480,6 +609,30 @@ final class BrowserViewModel: ObservableObject {
         closeTab(id: selectedTabId)
     }
 
+    func toggleMute(tab: Tab) {
+        tab.toggleMute()
+    }
+
+    func toggleMuteActiveTab() {
+        activeTab.toggleMute()
+    }
+
+    func closeOtherTabs(id: UUID) {
+        let targets = tabs.filter { $0.id != id }
+        for t in targets {
+            closeTab(id: t.id)
+        }
+    }
+
+    func duplicateTab(id: UUID) {
+        guard let sourceTab = tabs.first(where: { $0.id == id }) else { return }
+        if let url = sourceTab.currentURL {
+            createNewTab(with: url, select: true)
+        } else {
+            createNewTab(select: true)
+        }
+    }
+
     func moveTab(from sourceIndex: Int, to destinationIndex: Int) {
         guard sourceIndex != destinationIndex,
               tabs.indices.contains(sourceIndex),
@@ -591,7 +744,7 @@ final class BrowserViewModel: ObservableObject {
     }
 
     func resolveURL(from input: String) -> URL? {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "^(https?://)?youtube\\.com(/.*)?$", with: "$1www.youtube.com$2", options: [.regularExpression, .caseInsensitive])
         guard !trimmed.isEmpty else { return nil }
 
         if trimmed.lowercased().hasPrefix("http://") || trimmed.lowercased().hasPrefix("https://") {
@@ -636,6 +789,9 @@ final class BrowserViewModel: ObservableObject {
         tab.isSleeping = false
         tab.pageError = nil
         let webView = tab.ensureWebView()
+        if let host = url.host {
+            AdBlockController.shared.updateUserScripts(for: webView, host: host)
+        }
         withAnimation(.easeOut(duration: 0.2)) {
             tab.currentURL = url
             tab.addressText = url.absoluteString
