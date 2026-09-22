@@ -489,7 +489,7 @@ final class BrowserViewModel: ObservableObject {
         tabCancellables.removeAll()
         for tab in tabs {
             tab.onOpenNewTab = { [weak self] url in
-                self?.createNewTab(with: url, select: false)
+                self?.createNewTab(with: url, select: true)
             }
             tab.onLoadingFinished = { [weak self] in
                 self?.checkTabSleeping()
