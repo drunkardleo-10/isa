@@ -140,7 +140,7 @@ struct SolarSwitchView: View {
                 .opacity(isDark ? 1.0 : 0.0)
                 .rotationEffect(.degrees(isDark ? 0 : -80))
         }
-        .frame(width: 12, height: 12)
+        .frame(width: 14, height: 14)
     }
 }
 
@@ -173,7 +173,7 @@ struct AnimatedThemeToggle: View {
         }) {
             SolarSwitchView(isDark: isDark)
                 .foregroundColor(isHovered ? .primary : .secondary)
-                .frame(width: 24, height: 24)
+                .frame(width: 26, height: 26)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

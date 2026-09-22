@@ -56,7 +56,7 @@ struct ContentView: View {
                     .zIndex(90)
 
                 AdBlockStatusPopover(viewModel: viewModel)
-                    .padding(.top, 36)
+                    .padding(.top, 42)
                     .padding(.trailing, 12)
                     .transition(.asymmetric(
                         insertion: .scale(scale: 0.95, anchor: .topTrailing).combined(with: .opacity),
@@ -77,7 +77,7 @@ struct ContentView: View {
                     .zIndex(90)
 
                 DownloadsPopoverView(downloadManager: downloadManager)
-                    .padding(.top, 36)
+                    .padding(.top, 42)
                     .padding(.trailing, 12)
                     .transition(.asymmetric(
                         insertion: .scale(scale: 0.95, anchor: .topTrailing).combined(with: .opacity),
@@ -154,7 +154,7 @@ struct ContentView: View {
     private var topBar: some View {
         HStack(alignment: .center, spacing: 6) {
             WindowDragHandle()
-                .frame(width: 78, height: 32)
+                .frame(width: 78, height: 38)
 
             navigationBar
 
@@ -170,9 +170,9 @@ struct ContentView: View {
                 }
             }) {
                 Image(systemName: "checkmark.shield")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundColor(isShieldPopoverPresented ? .primary : .secondary)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 26, height: 26)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -191,21 +191,21 @@ struct ContentView: View {
                 }) {
                     ZStack(alignment: .topTrailing) {
                         Image(systemName: "arrow.down.circle")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundColor(isDownloadsPopoverPresented ? .primary : (downloadManager.hasActiveDownloads ? .accentColor : .secondary))
-                            .frame(width: 24, height: 24)
+                            .frame(width: 26, height: 26)
                             .contentShape(Rectangle())
 
                         if downloadManager.hasActiveDownloads {
                             Circle()
                                 .fill(Color.accentColor)
-                                .frame(width: 5, height: 5)
-                                .offset(x: -3, y: 4)
+                                .frame(width: 6, height: 6)
+                                .offset(x: -3, y: 5)
                         } else if downloadManager.hasUnreadCompletion {
                             Circle()
                                 .fill(Color.green)
-                                .frame(width: 5, height: 5)
-                                .offset(x: -3, y: 4)
+                                .frame(width: 6, height: 6)
+                                .offset(x: -3, y: 5)
                         }
                     }
                 }
@@ -215,14 +215,14 @@ struct ContentView: View {
 
             AnimatedThemeToggle(viewModel: viewModel)
         }
-        .frame(height: 32)
+        .frame(height: 38)
         .padding(.trailing, 12)
         .background(Color(nsColor: .windowBackgroundColor))
         .background(NonDraggableBackground())
     }
 
     private var navigationBar: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 3) {
             NavButton(icon: "back", tooltip: "Back (⌘[)", disabled: !viewModel.activeTab.canGoBack) {
                 viewModel.goBackActiveTab()
             }
@@ -243,8 +243,8 @@ struct ContentView: View {
             let availableWidth = geometry.size.width
             let tabCount = viewModel.tabs.count
             let spacing: CGFloat = tabCount > 60 ? 1 : (tabCount > 25 ? 1.5 : (tabCount > 12 ? 2 : 4))
-            let plusButtonWidth: CGFloat = 22
-            let maxTabWidth: CGFloat = 180
+            let plusButtonWidth: CGFloat = 26
+            let maxTabWidth: CGFloat = 200
             let minTabWidth: CGFloat = 6
             let totalSpacing = CGFloat(max(0, tabCount - 1)) * spacing
             let availableForTabs = max(0, availableWidth - plusButtonWidth - totalSpacing - 4)
@@ -333,13 +333,13 @@ struct ContentView: View {
 
                 if !isOverflowing {
                     NonDraggableBackground()
-                        .frame(maxWidth: .infinity, maxHeight: 32)
+                        .frame(maxWidth: .infinity, maxHeight: 38)
                 }
             }
-            .frame(width: availableWidth, height: 32, alignment: .leading)
+            .frame(width: availableWidth, height: 38, alignment: .leading)
             .clipped()
         }
-        .frame(maxWidth: .infinity, maxHeight: 32)
+        .frame(maxWidth: .infinity, maxHeight: 38)
         .clipped()
     }
 
@@ -575,7 +575,7 @@ struct TabPillInteractionView: NSViewRepresentable {
         }
 
         override var intrinsicContentSize: NSSize {
-            return NSSize(width: NSView.noIntrinsicMetric, height: 26)
+            return NSSize(width: NSView.noIntrinsicMetric, height: 30)
         }
 
         override func hitTest(_ point: NSPoint) -> NSView? {
@@ -1175,18 +1175,18 @@ struct AnimatedSpeakerIcon: View {
     var body: some View {
         ZStack {
             Image(systemName: "speaker.wave.2.fill")
-                .font(.system(size: 8, weight: .semibold))
+                .font(.system(size: 9, weight: .semibold))
                 .scaleEffect(isMuted ? 0.001 : 1.0)
                 .opacity(isMuted ? 0.0 : 1.0)
                 .rotationEffect(.degrees(isMuted ? -35 : 0))
 
             Image(systemName: "speaker.slash.fill")
-                .font(.system(size: 8, weight: .semibold))
+                .font(.system(size: 9, weight: .semibold))
                 .scaleEffect(isMuted ? 1.0 : 0.001)
                 .opacity(isMuted ? 1.0 : 0.0)
                 .rotationEffect(.degrees(isMuted ? 0 : 35))
         }
-        .frame(width: 15, height: 15)
+        .frame(width: 16, height: 16)
         .animation(.spring(response: 0.45, dampingFraction: 0.72), value: isMuted)
     }
 }
@@ -1241,26 +1241,26 @@ struct TabPillView: View {
 
     private var trailingPadding: CGFloat {
         if showsCloseButton && showsSpeakerButton {
-            return 38
+            return 40
         } else if showsCloseButton || showsSpeakerButton {
-            return 20
+            return 22
         }
         return 4
     }
 
     private var iconSize: CGFloat {
         if tabWidth >= 30 {
-            return 14
+            return 15
         } else if tabWidth >= 20 {
-            return 12
+            return 13
         } else if tabWidth >= 13 {
-            return 9
+            return 10
         }
         return 0
     }
 
     private var pillCornerRadius: CGFloat {
-        min(6, max(2, tabWidth / 2))
+        min(7, max(2, tabWidth / 2))
     }
 
     var body: some View {
@@ -1313,7 +1313,7 @@ struct TabPillView: View {
 
                 if showsTitle {
                     Text(displayTitle)
-                        .font(.system(size: 12, weight: isSelected ? .medium : .regular))
+                        .font(.system(size: 12.5, weight: isSelected ? .medium : .regular))
                         .foregroundColor(isSelected ? .primary : .secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -1321,7 +1321,7 @@ struct TabPillView: View {
             }
             .padding(.leading, showsTitle ? 8 : (showsCloseButton ? 4 : 2))
             .padding(.trailing, trailingPadding)
-            .frame(width: tabWidth, height: 26, alignment: showsTitle ? .leading : .center)
+            .frame(width: tabWidth, height: 30, alignment: showsTitle ? .leading : .center)
             .clipped()
             .allowsHitTesting(false)
 
@@ -1371,9 +1371,9 @@ struct TabPillView: View {
                             viewModel.closeTab(id: tab.id)
                         }) {
                             Image(systemName: "xmark")
-                                .font(.system(size: 7, weight: .bold))
+                                .font(.system(size: 8, weight: .bold))
                                 .foregroundColor(.secondary)
-                                .frame(width: 14, height: 14)
+                                .frame(width: 16, height: 16)
                                 .background(
                                     Circle().fill(Color.primary.opacity(isCloseHovered ? 0.12 : 0))
                                 )
@@ -1388,7 +1388,7 @@ struct TabPillView: View {
                 .padding(.trailing, 4)
             }
         }
-        .frame(width: tabWidth, height: 26)
+        .frame(width: tabWidth, height: 30)
         .clipped()
         .shadow(color: Color.black.opacity(isBeingDragged ? 0.18 : 0), radius: isBeingDragged ? 5 : 0, x: 0, y: isBeingDragged ? 2 : 0)
         .animation(.spring(response: 0.3, dampingFraction: 0.82), value: tabWidth)
@@ -1449,14 +1449,14 @@ struct NewTabButton: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 5)
+            RoundedRectangle(cornerRadius: 6)
                 .fill(Color.primary.opacity(isHovered ? 0.10 : 0.05))
 
             Image(systemName: "plus")
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundColor(isHovered ? .primary : .secondary)
         }
-        .frame(width: 20, height: 20)
+        .frame(width: 24, height: 24)
         .contentShape(Rectangle())
         .background(NonDraggableBackground())
         .onTapGesture {
@@ -1482,13 +1482,13 @@ struct NavButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                RoundedRectangle(cornerRadius: 5)
+                RoundedRectangle(cornerRadius: 6)
                     .fill(isHovered && !disabled ? Color.primary.opacity(0.08) : Color.clear)
-                    .frame(width: 22, height: 22)
+                    .frame(width: 26, height: 26)
 
                 NavSvgIcon(name: icon)
                     .foregroundColor(disabled ? .secondary.opacity(0.35) : (isHovered ? .primary : .secondary))
-                    .frame(width: 14, height: 14)
+                    .frame(width: 15, height: 15)
             }
             .contentShape(Rectangle())
         }
@@ -1520,16 +1520,16 @@ struct NavSvgIcon: View {
         switch name {
         case "back":
             Image(systemName: "chevron.backward")
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
         case "forward":
             Image(systemName: "chevron.forward")
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
         case "reload":
             Image(systemName: "arrow.clockwise")
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
         case "home":
             Image(systemName: "house")
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
         default:
             EmptyView()
         }
