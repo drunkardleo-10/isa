@@ -34,7 +34,7 @@ struct ContentView: View {
                                 }
                             }
                             .opacity(tab.id == viewModel.selectedTabId && !tab.isNewTabState ? 1 : 0)
-                            .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isNewTabState && !tab.isAddressOverlayPresented && !isShieldPopoverPresented && !isDownloadsPopoverPresented)
+                            .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isNewTabState && !tab.isAddressOverlayPresented && !isShieldPopoverPresented && !isDownloadsPopoverPresented && !viewModel.isHistoryViewPresented)
                         }
                     }
 
@@ -85,9 +85,17 @@ struct ContentView: View {
                     ))
                     .zIndex(100)
             }
+
+            if viewModel.isHistoryViewPresented {
+                HistoryView(viewModel: viewModel)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .zIndex(150)
+            }
         }
         .onExitCommand {
-            if viewModel.activeTab.isFindPresented {
+            if viewModel.isHistoryViewPresented {
+                viewModel.dismissHistoryView()
+            } else if viewModel.activeTab.isFindPresented {
                 viewModel.hideFindInPage()
             } else if isDownloadsPopoverPresented {
                 withAnimation(.easeOut(duration: 0.10)) {
@@ -108,6 +116,19 @@ struct ContentView: View {
                     let isCmd = flags.contains(.command) && !flags.contains(.control) && !flags.contains(.option)
                     let isF = (chars == "f") || event.keyCode == 3
                     let isG = (chars == "g") || event.keyCode == 5
+                    let isY = (chars == "y") || event.keyCode == 16
+
+                    if event.keyCode == 53 { // Escape
+                        if viewModel.isHistoryViewPresented {
+                            viewModel.dismissHistoryView()
+                            return nil
+                        }
+                    }
+
+                    if isCmd && isY {
+                        viewModel.toggleHistoryView()
+                        return nil
+                    }
 
                     if isCmd && isF && !flags.contains(.shift) {
                         viewModel.toggleFindInPage()
@@ -212,6 +233,19 @@ struct ContentView: View {
                 .buttonStyle(.plain)
                 .help("Downloads")
             }
+
+            Button(action: {
+                PerformanceMonitor.shared.log(event: "Click", details: "History view toggle")
+                viewModel.toggleHistoryView()
+            }) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(viewModel.isHistoryViewPresented ? .primary : .secondary)
+                    .frame(width: 26, height: 26)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Browsing History (⌘Y)")
 
             AnimatedThemeToggle(viewModel: viewModel)
         }
@@ -1100,7 +1134,9 @@ struct ActiveTabOverlayView: View {
             suggestions = []
             selectedSuggestionIndex = -1
         }
-        HistoryManager.shared.recordSearch(query: item.query)
+        if !item.isHistoryVisit {
+            HistoryManager.shared.recordSearch(query: item.query)
+        }
         viewModel.navigate(tab: tab, to: item.fullURL)
     }
 
@@ -1128,9 +1164,9 @@ struct SuggestionRowView: View {
     var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 10) {
-                Image(systemName: item.isRecentSearch ? "clock.arrow.circlepath" : "magnifyingglass")
+                Image(systemName: item.isHistoryVisit ? "safari" : (item.isRecentSearch ? "clock.arrow.circlepath" : "magnifyingglass"))
                     .font(.system(size: 12))
-                    .foregroundColor(item.isRecentSearch ? .accentColor : .secondary)
+                    .foregroundColor(item.isHistoryVisit ? .accentColor : (item.isRecentSearch ? .accentColor : .secondary))
                     .frame(width: 16)
 
                 Text(item.query)
@@ -1140,7 +1176,16 @@ struct SuggestionRowView: View {
 
                 Spacer()
 
-                if item.isRecentSearch {
+                if item.isHistoryVisit {
+                    Text(item.displayURL)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary.opacity(0.8))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule().fill(Color.primary.opacity(0.06))
+                        )
+                } else if item.isRecentSearch {
                     Text("Search history")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.secondary.opacity(0.8))

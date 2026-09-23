@@ -240,6 +240,9 @@ final class Tab: Identifiable, ObservableObject {
                 DispatchQueue.main.async {
                     if self.pageTitle != rawTitle {
                         self.pageTitle = rawTitle
+                        if let u = self.currentURL {
+                            HistoryManager.shared.updateTitle(for: u, title: rawTitle)
+                        }
                     }
                 }
             }
@@ -443,12 +446,41 @@ final class BrowserViewModel: ObservableObject {
         }
     }
     @Published var isBenchmarkRunning: Bool = false
+    @Published var isHistoryViewPresented: Bool = false
+    @Published var isClearHistoryDialogPresented: Bool = false
     private var tabCancellables = Set<AnyCancellable>()
     private var sleepMaintenanceTimer: Timer?
     private var memoryPressureSource: DispatchSourceMemoryPressure?
     private var sigUsr1Source: DispatchSourceSignal?
     private let maxLiveWebViews: Int = 5
     private let backgroundLiveTabIdleTimeout: TimeInterval = 120.0
+
+    func toggleHistoryView() {
+        withAnimation(.spring(response: 0.22, dampingFraction: 0.86)) {
+            isHistoryViewPresented.toggle()
+        }
+    }
+
+    func showHistoryView() {
+        withAnimation(.spring(response: 0.22, dampingFraction: 0.86)) {
+            isHistoryViewPresented = true
+        }
+    }
+
+    func dismissHistoryView() {
+        withAnimation(.easeOut(duration: 0.15)) {
+            isHistoryViewPresented = false
+        }
+    }
+
+    func openHistoryURL(_ url: URL, inNewTab: Bool = false) {
+        dismissHistoryView()
+        if inNewTab {
+            createNewTab(with: url, select: true)
+        } else {
+            navigate(tab: activeTab, to: url.absoluteString)
+        }
+    }
 
     var activeTab: Tab {
         if let tab = tabs.first(where: { $0.id == selectedTabId }) {

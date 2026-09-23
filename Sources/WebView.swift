@@ -115,12 +115,15 @@ struct WebView: NSViewRepresentable {
                 self.tab?.pageError = nil
                 self.tab?.snapshotImage = nil
                 self.tab?.lastActiveTime = Date()
-                if let url = webView.url, url.absoluteString != "about:blank" {
-                    self.tab?.currentURL = url
-                }
                 let rawTitle = webView.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 if !rawTitle.isEmpty {
                     self.tab?.pageTitle = rawTitle
+                }
+                if let url = webView.url, url.absoluteString != "about:blank" {
+                    self.tab?.currentURL = url
+                    if !rawTitle.isEmpty {
+                        HistoryManager.shared.updateTitle(for: url, title: rawTitle)
+                    }
                 }
                 self.tab?.canGoBack = webView.canGoBack
                 self.tab?.canGoForward = webView.canGoForward
@@ -148,6 +151,9 @@ struct WebView: NSViewRepresentable {
                 PerformanceMonitor.shared.log(event: "LoadFinish", details: "Loaded \"\(tab.pageTitle)\" in \(durationMs)ms")
                 if let host = webView.url?.host {
                     AdBlockController.recordNavigation(for: host)
+                }
+                if let url = webView.url, url.absoluteString != "about:blank" {
+                    HistoryManager.shared.recordVisit(url: url, title: tab.pageTitle)
                 }
 
                 if tab.isReloading {

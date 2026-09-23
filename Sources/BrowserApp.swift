@@ -102,6 +102,32 @@ struct BrowserApp: App {
                 }
                 .keyboardShortcut("g", modifiers: [.command, .shift])
             }
+
+            CommandMenu("History") {
+                Button("Show Full History") {
+                    viewModel.showHistoryView()
+                }
+                .keyboardShortcut("y", modifiers: .command)
+
+                Button("Clear Browsing Data…") {
+                    viewModel.showHistoryView()
+                }
+
+                Divider()
+
+                let recent = Array(HistoryManager.shared.historyItems.prefix(8))
+                if recent.isEmpty {
+                    Text("No Recent History")
+                } else {
+                    ForEach(recent) { item in
+                        Button(item.displayTitle) {
+                            if let url = URL(string: item.url) {
+                                viewModel.openHistoryURL(url)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
