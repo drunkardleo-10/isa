@@ -92,6 +92,7 @@ final class HistoryManager: ObservableObject {
         guard !urlString.isEmpty,
               urlString != "about:blank",
               !urlString.hasPrefix("data:"),
+              url.scheme?.lowercased() != "isa",
               !url.isFileURL else { return }
 
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -122,7 +123,7 @@ final class HistoryManager: ObservableObject {
 
     func updateTitle(for url: URL, title: String) {
         let urlString = url.absoluteString
-        guard !urlString.isEmpty else { return }
+        guard !urlString.isEmpty, url.scheme?.lowercased() != "isa" else { return }
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else { return }
 
@@ -221,6 +222,8 @@ final class HistoryManager: ObservableObject {
         if trimmed.lowercased().hasPrefix("http://") ||
            trimmed.lowercased().hasPrefix("https://") ||
            trimmed.lowercased().hasPrefix("localhost:") ||
+           trimmed.lowercased().hasPrefix("isa://") ||
+           trimmed.lowercased() == "isa:settings" ||
            trimmed.lowercased() == "localhost" {
             return
         }

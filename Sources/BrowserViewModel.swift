@@ -34,6 +34,27 @@ enum AppTheme: String, CaseIterable {
     }
 }
 
+enum TabPlacement: String, CaseIterable, Identifiable {
+    case top = "top"
+    case left = "left"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .top: return "Top Bar"
+        case .left: return "Left Sidebar"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .top: return "macwindow"
+        case .left: return "sidebar.left"
+        }
+    }
+}
+
 final class BrowserWebView: WKWebView {
     weak var tab: Tab?
 
@@ -87,6 +108,10 @@ final class TabScriptHandler: NSObject, WKScriptMessageHandler {
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         if message.name == "openNewTab", let str = message.body as? String, let url = URL(string: str) {
+            if url.scheme?.lowercased() == "isa" {
+                PerformanceMonitor.shared.log(event: "Security", details: "Blocked script message from opening internal URL: \(str)")
+                return
+            }
             DispatchQueue.main.async {
                 self.tab?.onOpenNewTab?(url)
             }
@@ -142,6 +167,7 @@ final class Tab: Identifiable, ObservableObject {
     @Published var canGoForward: Bool = false
     @Published var isAddressOverlayPresented: Bool = false
     @Published var isFindPresented: Bool = false
+    @Published var isPinned: Bool = false
     @Published var favicon: NSImage? = nil
     let findState: TabFindState
     private var findCancellable: AnyCancellable?
@@ -205,6 +231,7 @@ final class Tab: Identifiable, ObservableObject {
     }
 
     func reload() {
+        guard !isInternal else { return }
         let targetURL = pageError?.failingURL ?? currentURL ?? webView?.url
         let hadError = (pageError != nil)
         pageError = nil
@@ -318,8 +345,16 @@ final class Tab: Identifiable, ObservableObject {
         audioObserver = nil
     }
 
+    var isInternal: Bool {
+        currentURL?.scheme?.lowercased() == "isa"
+    }
+
     var isNewTabState: Bool {
-        currentURL == nil || currentURL?.absoluteString == "about:blank"
+        !isInternal && (currentURL == nil || currentURL?.absoluteString == "about:blank")
+    }
+
+    var isPinnable: Bool {
+        !isNewTabState && !isInternal && currentURL != nil && !(currentURL?.absoluteString.isEmpty ?? true) && currentURL?.absoluteString != "about:blank"
     }
 
     static let mediaScriptSource = """
@@ -368,6 +403,13 @@ final class Tab: Identifiable, ObservableObject {
 
     @discardableResult
     func ensureWebView(caller: String = #function) -> WKWebView {
+        if isInternal {
+            PerformanceMonitor.shared.log(event: "Warning", details: "ensureWebView called on internal tab: \(currentURL?.absoluteString ?? "")")
+            if let existing = webView { return existing }
+            let newWebView = BrowserWebView(frame: .zero, configuration: WKWebViewConfiguration())
+            self.webView = newWebView
+            return newWebView
+        }
         if let existing = webView { return existing }
         PerformanceMonitor.shared.log(event: "WebKitInit", details: "Instantiating WKWebView for tab \(id.uuidString.prefix(6)) from [\(caller)]")
         let configuration = WKWebViewConfiguration()
@@ -418,19 +460,57 @@ final class Tab: Identifiable, ObservableObject {
         if let url = url {
             self.addressText = url.absoluteString
             self.currentURL = url
-            self.pageTitle = url.host ?? ""
-            if !lazy {
-                let wv = ensureWebView(caller: "Tab.init(url:)")
-                wv.load(URLRequest(url: url))
+            if url.scheme?.lowercased() == "isa" {
+                self.pageTitle = (url.host == "settings" || url.path == "settings") ? "Settings" : "Settings"
             } else {
-                self.isSleeping = true
+                self.pageTitle = url.host ?? ""
+                if !lazy {
+                    let wv = ensureWebView(caller: "Tab.init(url:)")
+                    wv.load(URLRequest(url: url))
+                } else {
+                    self.isSleeping = true
+                }
             }
         }
     }
 }
 
+struct PinnedTabRecord: Codable, Equatable {
+    var url: String
+    var title: String
+}
+
 final class BrowserViewModel: ObservableObject {
     static let sharedProcessPool = WKProcessPool()
+
+    private let pinnedStorageKey = "isa_pinned_tabs"
+
+    func savePinnedTabs() {
+        let records = pinnedTabs.compactMap { tab -> PinnedTabRecord? in
+            guard let urlString = tab.currentURL?.absoluteString, !urlString.isEmpty else { return nil }
+            return PinnedTabRecord(url: urlString, title: tab.pageTitle)
+        }
+        if let data = try? JSONEncoder().encode(records) {
+            UserDefaults.standard.set(data, forKey: pinnedStorageKey)
+            UserDefaults.standard.synchronize()
+        }
+    }
+
+    func loadPinnedTabs() -> [Tab] {
+        guard let data = UserDefaults.standard.data(forKey: pinnedStorageKey),
+              let records = try? JSONDecoder().decode([PinnedTabRecord].self, from: data) else {
+            return []
+        }
+        return records.compactMap { record in
+            guard let url = URL(string: record.url) else { return nil }
+            let tab = Tab(url: url)
+            if !record.title.isEmpty {
+                tab.pageTitle = record.title
+            }
+            tab.isPinned = true
+            return tab
+        }
+    }
 
     @Published var tabs: [Tab] = []
     @Published var selectedTabId: UUID = UUID()
@@ -452,8 +532,85 @@ final class BrowserViewModel: ObservableObject {
     private var sleepMaintenanceTimer: Timer?
     private var memoryPressureSource: DispatchSourceMemoryPressure?
     private var sigUsr1Source: DispatchSourceSignal?
-    private let maxLiveWebViews: Int = 5
-    private let backgroundLiveTabIdleTimeout: TimeInterval = 120.0
+    let maxLiveWebViews: Int = 5
+    let backgroundLiveTabIdleTimeout: TimeInterval = 120.0
+    @Published var isAdBlockEnabled: Bool = AdBlockController.shared.isEnabled {
+        didSet {
+            AdBlockController.shared.isEnabled = isAdBlockEnabled
+            applyLiveAdBlockStateToAllTabs()
+        }
+    }
+    @Published var isZenModeEnabled: Bool = UserDefaults.standard.bool(forKey: "zenModeEnabled") {
+        didSet {
+            UserDefaults.standard.set(isZenModeEnabled, forKey: "zenModeEnabled")
+        }
+    }
+
+    @Published var tabPlacement: TabPlacement = {
+        if let saved = UserDefaults.standard.string(forKey: "tabPlacement"),
+           let placement = TabPlacement(rawValue: saved) {
+            return placement
+        }
+        return .left
+    }() {
+        didSet {
+            UserDefaults.standard.set(tabPlacement.rawValue, forKey: "tabPlacement")
+        }
+    }
+
+    func toggleTabPlacement() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            tabPlacement = (tabPlacement == .top) ? .left : .top
+        }
+    }
+
+    @Published var isSidebarCollapsed: Bool = UserDefaults.standard.bool(forKey: "isSidebarCollapsed") {
+        didSet {
+            UserDefaults.standard.set(isSidebarCollapsed, forKey: "isSidebarCollapsed")
+        }
+    }
+
+    func toggleSidebarCollapse() {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            isSidebarCollapsed.toggle()
+        }
+    }
+    @Published var automaticallyCheckForUpdates: Bool = {
+        if UserDefaults.standard.object(forKey: "autoCheckUpdates") != nil {
+            return UserDefaults.standard.bool(forKey: "autoCheckUpdates")
+        }
+        return true
+    }() {
+        didSet {
+            UserDefaults.standard.set(automaticallyCheckForUpdates, forKey: "autoCheckUpdates")
+        }
+    }
+
+    func applyLiveAdBlockStateToAllTabs() {
+        for tab in tabs {
+            guard let webView = tab.webView else { continue }
+            let host = tab.currentURL?.host
+            if isAdBlockEnabled {
+                if let ruleList = AdBlockController.shared.currentRuleList {
+                    webView.configuration.userContentController.remove(ruleList)
+                    webView.configuration.userContentController.add(ruleList)
+                }
+                AdBlockController.shared.injectCosmeticCSS(into: webView, host: host)
+                if let h = host {
+                    AdBlockController.shared.updateUserScripts(for: webView, host: h)
+                }
+            } else {
+                if let ruleList = AdBlockController.shared.currentRuleList {
+                    webView.configuration.userContentController.remove(ruleList)
+                }
+                AdBlockController.shared.removeCosmeticCSS(from: webView)
+                if let h = host {
+                    AdBlockController.shared.updateUserScripts(for: webView, host: h)
+                }
+            }
+        }
+        PerformanceMonitor.shared.log(event: "AdBlock", details: "AdBlock state changed live to \(isAdBlockEnabled ? "enabled" : "disabled") across open tabs")
+    }
 
     func toggleHistoryView() {
         withAnimation(.spring(response: 0.22, dampingFraction: 0.86)) {
@@ -497,9 +654,15 @@ final class BrowserViewModel: ObservableObject {
     }
 
     init() {
+        let loadedPinned = loadPinnedTabs()
         let initialTab = Tab()
-        self.tabs = [initialTab]
-        self.selectedTabId = initialTab.id
+        if !loadedPinned.isEmpty {
+            self.tabs = loadedPinned + [initialTab]
+            self.selectedTabId = initialTab.id
+        } else {
+            self.tabs = [initialTab]
+            self.selectedTabId = initialTab.id
+        }
         bindTabs()
         applyAppAppearance()
         setupMemoryPressureHandler()
@@ -524,6 +687,9 @@ final class BrowserViewModel: ObservableObject {
                 self?.createNewTab(with: url, select: true)
             }
             tab.onLoadingFinished = { [weak self] in
+                if tab.isPinned {
+                    self?.savePinnedTabs()
+                }
                 self?.checkTabSleeping()
             }
             tab.objectWillChange
@@ -611,6 +777,7 @@ final class BrowserViewModel: ObservableObject {
 
     func closeTab(id: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let wasPinned = tabs[index].isPinned
 
         if tabs.count == 1 {
             tabs[0].findState.dismiss()
@@ -620,6 +787,9 @@ final class BrowserViewModel: ObservableObject {
                 selectedTabId = freshTab.id
             }
             bindTabs()
+            if wasPinned {
+                savePinnedTabs()
+            }
             PerformanceMonitor.shared.log(event: "Tab", details: "Closed last tab, reset to fresh tab")
             return
         }
@@ -634,6 +804,9 @@ final class BrowserViewModel: ObservableObject {
             _ = tabs.remove(at: index)
         }
         bindTabs()
+        if wasPinned {
+            savePinnedTabs()
+        }
         PerformanceMonitor.shared.log(event: "Tab", details: "Closed tab at index [\(index)] (Remaining: \(tabs.count))")
     }
 
@@ -663,6 +836,111 @@ final class BrowserViewModel: ObservableObject {
         } else {
             createNewTab(select: true)
         }
+    }
+
+    var pinnedTabs: [Tab] {
+        tabs.filter { $0.isPinned }
+    }
+
+    var unpinnedTabs: [Tab] {
+        tabs.filter { !$0.isPinned }
+    }
+
+    func pinTab(id: UUID, atIndex: Int? = nil) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let tab = tabs[index]
+        guard tab.isPinnable else { return }
+        let otherPinned = tabs.filter { $0.isPinned && $0.id != id }
+        guard otherPinned.count < 8 else { return }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            tab.isPinned = true
+            let targetPos: Int
+            if let at = atIndex {
+                targetPos = max(0, min(otherPinned.count, at))
+            } else {
+                targetPos = otherPinned.count
+            }
+            tabs.remove(at: index)
+            tabs.insert(tab, at: targetPos)
+        }
+        savePinnedTabs()
+        PerformanceMonitor.shared.log(event: "Tab", details: "Pinned tab [\(tab.pageTitle.isEmpty ? (tab.currentURL?.host ?? "Tab") : tab.pageTitle)]")
+    }
+
+    func unpinTab(id: UUID, atIndex: Int? = nil) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let tab = tabs[index]
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            tab.isPinned = false
+            let pinnedCount = tabs.filter { $0.isPinned && $0.id != id }.count
+            let unpinnedCount = tabs.filter { !$0.isPinned && $0.id != id }.count
+            let targetPos: Int
+            if let at = atIndex {
+                targetPos = pinnedCount + max(0, min(unpinnedCount, at))
+            } else {
+                targetPos = pinnedCount
+            }
+            tabs.remove(at: index)
+            tabs.insert(tab, at: targetPos)
+        }
+        savePinnedTabs()
+        PerformanceMonitor.shared.log(event: "Tab", details: "Unpinned tab [\(tab.pageTitle.isEmpty ? (tab.currentURL?.host ?? "Tab") : tab.pageTitle)]")
+    }
+
+    func moveUnpinnedTab(from: Int, to: Int) {
+        let unpinned = unpinnedTabs
+        guard from != to, unpinned.indices.contains(from) else { return }
+        let clampedTo = max(0, min(unpinned.count - 1, to))
+        let fromId = unpinned[from].id
+        let toId = unpinned[clampedTo].id
+        guard let src = tabs.firstIndex(where: { $0.id == fromId }),
+              let dst = tabs.firstIndex(where: { $0.id == toId }) else { return }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
+            let tab = tabs.remove(at: src)
+            tabs.insert(tab, at: dst)
+        }
+    }
+
+    func movePinnedTab(from: Int, to: Int) {
+        let pinned = pinnedTabs
+        guard from != to, pinned.indices.contains(from) else { return }
+        let clampedTo = max(0, min(pinned.count - 1, to))
+        guard from != clampedTo else { return }
+        let fromId = pinned[from].id
+        let toId = pinned[clampedTo].id
+        guard let src = tabs.firstIndex(where: { $0.id == fromId }),
+              let dst = tabs.firstIndex(where: { $0.id == toId }) else { return }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            let tab = tabs.remove(at: src)
+            tabs.insert(tab, at: dst)
+        }
+        savePinnedTabs()
+    }
+
+    func togglePinTab(id: UUID) {
+        if let tab = tabs.first(where: { $0.id == id }) {
+            if tab.isPinned {
+                unpinTab(id: id)
+            } else if tab.isPinnable && pinnedTabs.count < 8 {
+                pinTab(id: id)
+            }
+        }
+    }
+
+    func clearUnpinnedTabs() {
+        let unpinned = unpinnedTabs
+        guard !unpinned.isEmpty else { return }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            for tab in unpinned {
+                if tabs.count > 1 {
+                    closeTab(id: tab.id)
+                } else {
+                    navigate(tab: tab, to: "")
+                    tab.pageTitle = "New Tab"
+                }
+            }
+        }
+        PerformanceMonitor.shared.log(event: "Tab", details: "Cleared unpinned tabs")
     }
 
     func moveTab(from sourceIndex: Int, to destinationIndex: Int) {
@@ -779,8 +1057,11 @@ final class BrowserViewModel: ObservableObject {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "^(https?://)?youtube\\.com(/.*)?$", with: "$1www.youtube.com$2", options: [.regularExpression, .caseInsensitive])
         guard !trimmed.isEmpty else { return nil }
 
-        if trimmed.lowercased().hasPrefix("http://") || trimmed.lowercased().hasPrefix("https://") {
+        if trimmed.lowercased().hasPrefix("http://") || trimmed.lowercased().hasPrefix("https://") || trimmed.lowercased().hasPrefix("isa://") {
             return URL(string: trimmed)
+        }
+        if trimmed.lowercased() == "isa:settings" {
+            return URL(string: "isa://settings")
         }
 
         let domainPattern = "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$"
@@ -801,7 +1082,7 @@ final class BrowserViewModel: ObservableObject {
     func isDirectURL(_ input: String) -> Bool {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
-        if trimmed.lowercased().hasPrefix("http://") || trimmed.lowercased().hasPrefix("https://") {
+        if trimmed.lowercased().hasPrefix("http://") || trimmed.lowercased().hasPrefix("https://") || trimmed.lowercased().hasPrefix("isa://") || trimmed.lowercased() == "isa:settings" {
             return true
         }
         let domainPattern = "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$"
@@ -820,6 +1101,30 @@ final class BrowserViewModel: ObservableObject {
         tab.lastActiveTime = Date()
         tab.isSleeping = false
         tab.pageError = nil
+
+        if url.scheme?.lowercased() == "isa" {
+            if let wv = tab.webView {
+                wv.stopLoading()
+                wv.navigationDelegate = nil
+                wv.uiDelegate = nil
+                wv.configuration.userContentController.removeScriptMessageHandler(forName: "openNewTab")
+                wv.configuration.userContentController.removeScriptMessageHandler(forName: "mediaPlaybackState")
+                wv.removeFromSuperview()
+                tab.webView = nil
+            }
+            withAnimation(.easeOut(duration: 0.2)) {
+                tab.currentURL = url
+                tab.addressText = url.absoluteString
+                tab.isAddressOverlayPresented = false
+                tab.favicon = nil
+                tab.pageTitle = (url.host == "settings" || url.path == "settings") ? "Settings" : "Settings"
+                tab.isLoading = false
+                tab.canGoBack = false
+                tab.canGoForward = false
+            }
+            return
+        }
+
         let webView = tab.ensureWebView()
         if let host = url.host {
             AdBlockController.shared.updateUserScripts(for: webView, host: host)
@@ -831,6 +1136,18 @@ final class BrowserViewModel: ObservableObject {
             tab.favicon = nil
         }
         webView.load(URLRequest(url: url))
+    }
+
+    func openSettings() {
+        if activeTab.isNewTabState {
+            navigate(tab: activeTab, to: "isa://settings")
+        } else if activeTab.currentURL?.absoluteString == "isa://settings" {
+            return
+        } else {
+            if let url = URL(string: "isa://settings") {
+                createNewTab(with: url, select: true)
+            }
+        }
     }
 
     func reloadActiveTab() {
@@ -1053,6 +1370,7 @@ final class BrowserViewModel: ObservableObject {
 
     func wakeTabIfNeeded(_ tab: Tab) {
         tab.lastActiveTime = Date()
+        guard !tab.isInternal else { return }
         guard tab.isSleeping else { return }
 
         let title = tab.pageTitle.isEmpty ? (tab.currentURL?.host ?? "Tab") : tab.pageTitle

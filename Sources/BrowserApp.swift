@@ -54,7 +54,9 @@ struct BrowserApp: App {
 
                 ForEach(1...9, id: \.self) { num in
                     Button("Select Tab \(num)") {
-                        viewModel.selectTabNumber(num)
+                        withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                            viewModel.selectTabNumber(num)
+                        }
                     }
                     .keyboardShortcut(KeyEquivalent(Character("\(num)")), modifiers: .command)
                 }

@@ -32,6 +32,11 @@ struct WebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if let scheme = navigationAction.request.url?.scheme?.lowercased(), scheme == "isa" {
+                PerformanceMonitor.shared.log(event: "Security", details: "Blocked web content navigation to internal scheme: \(navigationAction.request.url?.absoluteString ?? "")")
+                decisionHandler(.cancel)
+                return
+            }
             if navigationAction.shouldPerformDownload {
                 print("[isa] [Download] navigationAction.shouldPerformDownload == true for \(navigationAction.request.url?.absoluteString ?? "")")
                 decisionHandler(.download)
@@ -94,6 +99,10 @@ struct WebView: NSViewRepresentable {
 
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
             if let url = navigationAction.request.url, !url.absoluteString.isEmpty {
+                if url.scheme?.lowercased() == "isa" {
+                    PerformanceMonitor.shared.log(event: "Security", details: "Blocked web content popup to internal scheme: \(url.absoluteString)")
+                    return nil
+                }
                 DispatchQueue.main.async {
                     self.tab?.onOpenNewTab?(url)
                 }

@@ -14,6 +14,7 @@
 		2C1D5953FD6A3BBF4C07A068 /* forward.svg in Resources */ = {isa = PBXBuildFile; fileRef = 9F6A13D7569E2BCF516C073A /* forward.svg */; };
 		2E9935927389BC58B3C79634 /* BrowserViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE843F5CEBEB649CA5A2E830 /* BrowserViewModel.swift */; };
 		39423AFEFA5F75D0871C37DC /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADA369A09762F6096B69858D /* HistoryView.swift */; };
+		3F97C21FB7D99470E397526A /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0212D0EA3F9FA6107A84CE9F /* SettingsView.swift */; };
 		455AF9614672E328419D9FD9 /* HistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F633ED0068EDAF6D7850773B /* HistoryManager.swift */; };
 		4EEA959AC96C786DCE929A72 /* content-blocker.json in Resources */ = {isa = PBXBuildFile; fileRef = F0A52A1F857D2F78C1C727B7 /* content-blocker.json */; };
 		59F91C1365AD69A23C4D6FC6 /* reload.svg in Resources */ = {isa = PBXBuildFile; fileRef = CCF736D58D4B1B9DD78B6DC7 /* reload.svg */; };
@@ -37,6 +38,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0212D0EA3F9FA6107A84CE9F /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		04F3E1F306DEDFFEC02F3FC1 /* scriptlets.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = scriptlets.json; sourceTree = "<group>"; };
 		2A08E9252783AEF945D7C938 /* ShortcutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsView.swift; sourceTree = "<group>"; };
 		2A2C691A1D2C45FCE3AF7760 /* BrowserApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserApp.swift; sourceTree = "<group>"; };
@@ -83,6 +85,7 @@
 				ADA369A09762F6096B69858D /* HistoryView.swift */,
 				3A05D00522B8F3F74083E1E2 /* PageCrashErrorView.swift */,
 				AA9867D2DC69FD0595345C1F /* PerformanceMonitor.swift */,
+				0212D0EA3F9FA6107A84CE9F /* SettingsView.swift */,
 				7DCDF41A4FBF447C8ACDE379 /* ShortcutsManager.swift */,
 				2A08E9252783AEF945D7C938 /* ShortcutsView.swift */,
 				A6347A7548A0AB7642EBF924 /* WebView.swift */,
@@ -235,6 +238,7 @@
 				39423AFEFA5F75D0871C37DC /* HistoryView.swift in Sources */,
 				9C00F60963F9716EAB67A05D /* PageCrashErrorView.swift in Sources */,
 				0AC724332C38C09C3947F4A7 /* PerformanceMonitor.swift in Sources */,
+				3F97C21FB7D99470E397526A /* SettingsView.swift in Sources */,
 				A35520F95DD2AC73636C943C /* ShortcutsManager.swift in Sources */,
 				E9636DAA3EBF1F919D9C988B /* ShortcutsView.swift in Sources */,
 				CE1833878057E0544DAEEE91 /* WebView.swift in Sources */,

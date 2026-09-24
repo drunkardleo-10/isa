@@ -24,7 +24,26 @@ public final class AdBlockController {
     private var totalScriptletSnippetsCount: Int = 0
     private var domainsWithRulesAppliedSession = Set<String>()
 
-    public var isEnabled: Bool = true
+    public var isEnabled: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: "adBlockEnabled") != nil {
+                return UserDefaults.standard.bool(forKey: "adBlockEnabled")
+            }
+            return true
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "adBlockEnabled")
+        }
+    }
+
+    public var currentRuleList: WKContentRuleList? {
+        lock.lock()
+        defer { lock.unlock() }
+        if case .ready(let ruleList) = state {
+            return ruleList
+        }
+        return nil
+    }
 
     public init() {
         loadCosmeticFilterScript()
@@ -73,7 +92,8 @@ public final class AdBlockController {
     }
 
     public func apply(to configuration: WKWebViewConfiguration, host: String? = nil) {
-        if ProcessInfo.processInfo.environment["ISA_DISABLE_ADBLOCK"] == "1" ||
+        if !isEnabled ||
+           ProcessInfo.processInfo.environment["ISA_DISABLE_ADBLOCK"] == "1" ||
            ProcessInfo.processInfo.arguments.contains("--no-adblock") {
             return
         }
@@ -124,7 +144,8 @@ public final class AdBlockController {
         let mediaScript = WKUserScript(source: Tab.mediaScriptSource, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         ucc.addUserScript(mediaScript)
 
-        if ProcessInfo.processInfo.environment["ISA_DISABLE_ADBLOCK"] != "1" &&
+        if isEnabled &&
+           ProcessInfo.processInfo.environment["ISA_DISABLE_ADBLOCK"] != "1" &&
            !ProcessInfo.processInfo.arguments.contains("--no-adblock") {
             if ProcessInfo.processInfo.environment["ISA_DISABLE_COSMETIC"] != "1",
                let cosmetic = cosmeticUserScript(for: host) {
@@ -529,5 +550,45 @@ public final class AdBlockController {
 
     public static func recordNavigation(for host: String) {
         shared.recordNavigation(for: host)
+    }
+
+    public func removeCosmeticCSS(from webView: WKWebView) {
+        let js = """
+        (function() {
+            window.__isa_cosmetic_applied__ = false;
+            var styles = document.querySelectorAll('style[data-isa-adblock="cosmetic"]');
+            for (var i = 0; i < styles.length; i++) {
+                styles[i].remove();
+            }
+        })();
+        """
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    public func injectCosmeticCSS(into webView: WKWebView, host: String?) {
+        guard isEnabled else { return }
+        let css = cosmeticCSS(for: host)
+        guard !css.isEmpty else { return }
+        guard let data = try? JSONSerialization.data(withJSONObject: [css]),
+              let jsonArray = String(data: data, encoding: .utf8),
+              jsonArray.hasPrefix("[\"") && jsonArray.hasSuffix("\"]") else {
+            return
+        }
+        let escapedCSS = String(jsonArray.dropFirst().dropLast())
+        let js = """
+        (function() {
+            if (window.__isa_cosmetic_applied__) return;
+            var style = document.createElement("style");
+            style.setAttribute("type", "text/css");
+            style.setAttribute("data-isa-adblock", "cosmetic");
+            style.textContent = \(escapedCSS);
+            var target = document.head || document.documentElement;
+            if (target) {
+                target.appendChild(style);
+                window.__isa_cosmetic_applied__ = true;
+            }
+        })();
+        """
+        webView.evaluateJavaScript(js, completionHandler: nil)
     }
 }

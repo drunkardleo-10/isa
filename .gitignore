@@ -7,6 +7,6 @@ scripts/*
 target/
 *.log
 *.sh
-report.md
+*.md
 *.json
 *.dmg
