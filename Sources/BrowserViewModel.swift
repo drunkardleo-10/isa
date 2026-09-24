@@ -1060,8 +1060,14 @@ final class BrowserViewModel: ObservableObject {
         if trimmed.lowercased().hasPrefix("http://") || trimmed.lowercased().hasPrefix("https://") || trimmed.lowercased().hasPrefix("isa://") {
             return URL(string: trimmed)
         }
-        if trimmed.lowercased() == "isa:settings" {
+        if trimmed.lowercased() == "isa:settings" || trimmed.lowercased() == "isa://settings" {
             return URL(string: "isa://settings")
+        }
+        if trimmed.lowercased() == "isa:history" || trimmed.lowercased() == "isa://history" {
+            return URL(string: "isa://history")
+        }
+        if trimmed.lowercased() == "isa:downloads" || trimmed.lowercased() == "isa://downloads" {
+            return URL(string: "isa://downloads")
         }
 
         let domainPattern = "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$"

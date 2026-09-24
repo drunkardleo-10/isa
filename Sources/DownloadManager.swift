@@ -83,6 +83,26 @@ final class DownloadManager: NSObject, ObservableObject, WKDownloadDelegate {
         }
     }
 
+    func removeItem(id: UUID) {
+        if let idx = items.firstIndex(where: { $0.id == id }) {
+            let item = items[idx]
+            if item.status == .downloading {
+                item.cancel()
+            }
+            itemSubscriptions.removeValue(forKey: id)
+            items.remove(at: idx)
+            objectWillChange.send()
+        }
+    }
+
+    func clearFinished() {
+        for item in items where item.status != .downloading {
+            itemSubscriptions.removeValue(forKey: item.id)
+        }
+        items.removeAll(where: { $0.status != .downloading })
+        objectWillChange.send()
+    }
+
     func register(download: WKDownload, suggestedFilename: String? = nil) {
         let name = suggestedFilename ?? download.originalRequest?.url?.lastPathComponent ?? "download"
         print("[isa] [Download] Registering download: '\(name)' (suggested: '\(suggestedFilename ?? "none")')")
@@ -97,12 +117,12 @@ final class DownloadManager: NSObject, ObservableObject, WKDownloadDelegate {
 
         withAnimation(.spring(response: 0.2, dampingFraction: 0.85)) {
             items.insert(item, at: 0)
-            if items.count > 10 {
-                let removed = items.suffix(from: 10)
+            if items.count > 50 {
+                let removed = items.suffix(from: 50)
                 for r in removed {
                     itemSubscriptions.removeValue(forKey: r.id)
                 }
-                items = Array(items.prefix(10))
+                items = Array(items.prefix(50))
             }
         }
         objectWillChange.send()
