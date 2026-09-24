@@ -3,7 +3,7 @@
   "build": 1000,
   "url": "https://github.com/drunkardleo-10/isa/releases/download/v1.0.0/isa.zip",
   "dmg": "https://github.com/drunkardleo-10/isa/releases/download/v1.0.0/isa.dmg",
-  "sha256": "",
+  "sha256": "cfc8132805dc7abc19d6a2538243e26abbe14b4be2706747552c8a2e879bc473",
   "notes": "Initial release with intelligent tab decay, built-in ad blocking, and Zen mode.",
   "minimumSystemVersion": "14.0"
 }
