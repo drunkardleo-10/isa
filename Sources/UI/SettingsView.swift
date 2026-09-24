@@ -8,8 +8,7 @@ struct SettingsView: View {
     @ObservedObject private var downloadManager: DownloadManager = DownloadManager.shared
     @State private var selectedSection: SettingsNavSection = .general
     @State private var hoveredSection: SettingsNavSection? = nil
-    @State private var updateCheckMessage: String? = nil
-    @State private var isCheckingUpdates: Bool = false
+    @ObservedObject private var updater: Updater = Updater.shared
     @State private var historySearchText: String = ""
     @State private var showClearBrowsingDataSheet: Bool = false
     @State private var contentAppeared: Bool = false
@@ -197,7 +196,7 @@ struct SettingsView: View {
             SettingsCardGroup {
                 SettingsRow(
                     title: "Automatically check for updates",
-                    subtitle: "isa checks its GitHub release feed in the background. Updates are signed, so they stay safe without notarization."
+                    subtitle: "isa checks for updates in the background and prepares them silently."
                 ) {
                     SettingsSwitch(isOn: $viewModel.automaticallyCheckForUpdates, label: "Automatically check for updates")
                 }
@@ -205,52 +204,129 @@ struct SettingsView: View {
                 SettingsDivider()
 
                 SettingsRow(
-                    title: "isa 1.0 (WebKit)",
-                    subtitle: updateCheckMessage ?? "Build 1000 · Signed updates from GitHub releases."
+                    title: versionTitle,
+                    subtitle: versionDetail
                 ) {
-                    Button(action: checkForUpdates) {
-                        HStack(spacing: 5) {
-                            if isCheckingUpdates {
-                                ProgressView()
-                                    .progressViewStyle(.circular)
-                                    .controlSize(.mini)
-                                    .frame(width: 12, height: 12)
-                            }
-                            Text(isCheckingUpdates ? "Checking..." : "Check Now")
-                                .font(.system(size: 11.5, weight: .medium))
-                        }
-                        .foregroundColor(.primary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 5)
-                        .background(Color.primary.opacity(isCheckingUpdates ? 0.05 : 0.08))
-                        .cornerRadius(5)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 5)
-                                .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
-                        )
-                        .scaleEffect(isCheckingUpdates ? 0.97 : 1.0)
-                        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isCheckingUpdates)
-                    }
-                    .buttonStyle(SettingsPressableButtonStyle())
-                    .disabled(isCheckingUpdates)
+                    versionControl
                 }
             }
         }
     }
 
-    private func checkForUpdates() {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-            isCheckingUpdates = true
-            updateCheckMessage = "Checking GitHub releases..."
+    private var versionTitle: String {
+        switch updater.stage {
+        case .none:
+            return "isa v1.0.0"
+        case .fetching(let next):
+            return "isa v\(next.version) is downloading…"
+        case .ready(let next):
+            return "isa v\(next.version) is ready"
+        case .offered(let next), .waiting(let next):
+            return "isa v\(next.version) is out"
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                isCheckingUpdates = false
-                updateCheckMessage = "Up to date · Build 1000 is latest"
+    }
+
+    private var versionDetail: String {
+        switch updater.stage {
+        case .none:
+            if let last = updater.lastChecked {
+                return "Checked \(last.formatted(.relative(presentation: .named))) · Up to date"
             }
-            if let url = URL(string: "https://github.com/drunkardleo-10/isa/releases") {
-                NSWorkspace.shared.open(url)
+            return "Up to date · Checked once a day on its own"
+        case .fetching(let next):
+            return next.notes ?? "Downloading update in the background…"
+        case .ready(let next):
+            return next.notes ?? "Update downloaded. Ready to use on next launch."
+        case .offered(let next):
+            return next.notes ?? "Download the disk image to update manually."
+        case .waiting(let next):
+            return next.notes ?? "A new update is available."
+        }
+    }
+
+    @ViewBuilder
+    private var versionControl: some View {
+        switch updater.stage {
+        case .none:
+            Button(action: {
+                updater.check()
+            }) {
+                HStack(spacing: 5) {
+                    if updater.checking {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .controlSize(.mini)
+                            .frame(width: 12, height: 12)
+                    }
+                    Text(updater.checking ? "Checking..." : "Check Now")
+                        .font(.system(size: 11.5, weight: .medium))
+                }
+                .foregroundColor(.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(Color.primary.opacity(updater.checking ? 0.05 : 0.08))
+                .cornerRadius(5)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
+                )
+                .scaleEffect(updater.checking ? 0.97 : 1.0)
+                .animation(.spring(response: 0.25, dampingFraction: 0.7), value: updater.checking)
             }
+            .buttonStyle(SettingsPressableButtonStyle())
+            .disabled(updater.checking)
+
+        case .fetching:
+            HStack(spacing: 6) {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .controlSize(.small)
+                Text("Downloading…")
+                    .font(.system(size: 11.5))
+                    .foregroundColor(.secondary)
+            }
+
+        case .ready:
+            Button(action: {
+                updater.relaunch()
+            }) {
+                Text("Relaunch Now")
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(Color.accentColor)
+                    .cornerRadius(5)
+            }
+            .buttonStyle(SettingsPressableButtonStyle())
+
+        case .offered(let next):
+            Button(action: {
+                NSWorkspace.shared.open(next.dmg)
+            }) {
+                Text("Download DMG")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(Color.accentColor)
+                    .cornerRadius(5)
+            }
+            .buttonStyle(SettingsPressableButtonStyle())
+
+        case .waiting:
+            Button(action: {
+                updater.install()
+            }) {
+                Text("Install Update")
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(Color.accentColor)
+                    .cornerRadius(5)
+            }
+            .buttonStyle(SettingsPressableButtonStyle())
         }
     }
 

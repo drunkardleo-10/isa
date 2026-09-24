@@ -29,6 +29,7 @@
 		8AEEB3AD49CBBFA725FEE3CB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8CA7EC49AB41C0A1018C97C5 /* Assets.xcassets */; };
 		8D9201D9BDE2E3FD6A709BDA /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = B29158CC43F05B620ECEFFB4 /* AppIcon.icns */; };
 		9FC4F3A70468F001906711E2 /* BrowserViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C4AC25A5341FD39BC019033 /* BrowserViewModel.swift */; };
+		A2561F03EBB924C4F519CCBA /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = C533AE201B79DEA3AFFF5986 /* Updater.swift */; };
 		A3BF6314FA945799CCA5879E /* FindBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6D4CEE8B063A43615C3B7C /* FindBarView.swift */; };
 		ABCB025E18964EB139E96BF1 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F1BD757E39349EEBF7733D /* DownloadManager.swift */; };
 		B315A2DA933783F94B3A67A8 /* SidebarDropTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13787E52D74AB7BFF19FB888 /* SidebarDropTarget.swift */; };
@@ -76,6 +77,7 @@
 		B90D4B84985992F98A23B11A /* HistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryManager.swift; sourceTree = "<group>"; };
 		BA693DFF0093D28409A09782 /* ShortcutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsView.swift; sourceTree = "<group>"; };
 		C30D9C0B64F88B9B20A301FB /* AnimatedThemeToggle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimatedThemeToggle.swift; sourceTree = "<group>"; };
+		C533AE201B79DEA3AFFF5986 /* Updater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Updater.swift; sourceTree = "<group>"; };
 		CCF736D58D4B1B9DD78B6DC7 /* reload.svg */ = {isa = PBXFileReference; path = reload.svg; sourceTree = "<group>"; };
 		E08BA50A08D71D58B994A4B4 /* SettingsNavSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsNavSection.swift; sourceTree = "<group>"; };
 		E9AEE9CEBF5FB2E1EA5EE24E /* PageCrashErrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageCrashErrorView.swift; sourceTree = "<group>"; };
@@ -106,6 +108,7 @@
 				59AFA8C69B07EFA7BD567BF8 /* Performance */,
 				EB04CA972510AE5F56B80E37 /* Shortcuts */,
 				E0CDB80AAAEBD0561A7E9B1F /* UI */,
+				D87BC908C81829CB8D12E7F8 /* Updates */,
 				F12B0EF9F59B5573FE7DD2A8 /* WebView */,
 			);
 			path = Sources;
@@ -177,6 +180,14 @@
 				5066DB9A88516AE2B881AA56 /* Sources */,
 				F80396EEF2BBB80B6BBF99C0 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		D87BC908C81829CB8D12E7F8 /* Updates */ = {
+			isa = PBXGroup;
+			children = (
+				C533AE201B79DEA3AFFF5986 /* Updater.swift */,
+			);
+			path = Updates;
 			sourceTree = "<group>";
 		};
 		DD1614F6EAC8AB9123D8ECA8 /* rules */ = {
@@ -340,6 +351,7 @@
 				18D840420CE76B31055554AA /* ShortcutsManager.swift in Sources */,
 				E5751AEB2732718B8D4C99FA /* ShortcutsView.swift in Sources */,
 				B315A2DA933783F94B3A67A8 /* SidebarDropTarget.swift in Sources */,
+				A2561F03EBB924C4F519CCBA /* Updater.swift in Sources */,
 				33B54C5058CE967D522D8D63 /* WebView.swift in Sources */,
 				EC3D7EBDC3126FBE4BA7B7BB /* WindowControls.swift in Sources */,
 			);

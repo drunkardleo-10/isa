@@ -147,6 +147,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.applicationIconImage = icon
         }
 
+        Updater.shared.checkIfDue()
+
         if ProcessInfo.processInfo.arguments.contains("--run-perf-sequence") ||
            ProcessInfo.processInfo.arguments.contains("--open-tabs") ||
            ProcessInfo.processInfo.arguments.contains("--benchmark") ||
