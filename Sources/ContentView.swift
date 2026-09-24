@@ -1758,7 +1758,7 @@ struct ContentView: View {
         guard viewModel.isZenModeEnabled, !isZenBarHidden else { return }
         zenIdleTimer?.cancel()
         zenIdleTimer = Task {
-            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 zenIdleTimer = nil

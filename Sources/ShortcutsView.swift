@@ -15,41 +15,46 @@ struct ShortcutsSectionView: View {
     ]
 
     var body: some View {
-        LazyVGrid(columns: columns, alignment: .center, spacing: 16) {
-            ForEach(manager.shortcuts) { item in
-                ShortcutTileView(
-                    item: item,
-                    favicon: manager.favicons[item.id],
-                    onSelect: {
-                        PerformanceMonitor.shared.log(event: "ShortcutClick", details: "Clicked shortcut \"\(item.title)\" -> \(item.url)")
-                        viewModel.navigate(tab: tab, to: item.url)
-                    },
-                    onOpenInNewTab: {
-                        PerformanceMonitor.shared.log(event: "ShortcutNewTab", details: "Opened shortcut in new tab \"\(item.title)\" -> \(item.url)")
-                        let newTab = Tab()
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            viewModel.tabs.append(newTab)
-                            viewModel.selectedTabId = newTab.id
+        if manager.shortcuts.isEmpty {
+            AddShortcutTileView(action: onAddShortcut)
+                .frame(width: 72 * 3 + 20 * 2, alignment: .center)
+        } else {
+            LazyVGrid(columns: columns, alignment: .center, spacing: 16) {
+                ForEach(manager.shortcuts) { item in
+                    ShortcutTileView(
+                        item: item,
+                        favicon: manager.favicons[item.id],
+                        onSelect: {
+                            PerformanceMonitor.shared.log(event: "ShortcutClick", details: "Clicked shortcut \"\(item.title)\" -> \(item.url)")
+                            viewModel.navigate(tab: tab, to: item.url)
+                        },
+                        onOpenInNewTab: {
+                            PerformanceMonitor.shared.log(event: "ShortcutNewTab", details: "Opened shortcut in new tab \"\(item.title)\" -> \(item.url)")
+                            let newTab = Tab()
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                viewModel.tabs.append(newTab)
+                                viewModel.selectedTabId = newTab.id
+                            }
+                            viewModel.bindTabs()
+                            viewModel.navigate(tab: newTab, to: item.url)
+                        },
+                        onEdit: {
+                            onEditShortcut(item)
+                        },
+                        onRemove: {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                                manager.removeShortcut(id: item.id)
+                            }
                         }
-                        viewModel.bindTabs()
-                        viewModel.navigate(tab: newTab, to: item.url)
-                    },
-                    onEdit: {
-                        onEditShortcut(item)
-                    },
-                    onRemove: {
-                        withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
-                            manager.removeShortcut(id: item.id)
-                        }
-                    }
-                )
-            }
+                    )
+                }
 
-            if manager.shortcuts.count < ShortcutsManager.maxShortcuts {
-                AddShortcutTileView(action: onAddShortcut)
+                if manager.shortcuts.count < ShortcutsManager.maxShortcuts {
+                    AddShortcutTileView(action: onAddShortcut)
+                }
             }
+            .frame(width: 72 * 3 + 20 * 2)
         }
-        .frame(width: 72 * 3 + 20 * 2)
     }
 }
 

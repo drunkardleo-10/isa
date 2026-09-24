@@ -781,16 +781,10 @@ final class BrowserViewModel: ObservableObject {
 
         if tabs.count == 1 {
             tabs[0].findState.dismiss()
-            let freshTab = Tab()
-            withAnimation(.easeInOut(duration: 0.2)) {
-                tabs = [freshTab]
-                selectedTabId = freshTab.id
-            }
-            bindTabs()
             if wasPinned {
                 savePinnedTabs()
             }
-            PerformanceMonitor.shared.log(event: "Tab", details: "Closed last tab, reset to fresh tab")
+            NSApplication.shared.terminate(nil)
             return
         }
 
