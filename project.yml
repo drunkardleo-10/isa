@@ -20,6 +20,8 @@ targets:
         buildPhase: resources
       - path: Assets
         buildPhase: resources
+        excludes:
+          - "isa_browser.png"
     settings:
       base:
         PRODUCT_NAME: isa

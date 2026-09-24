@@ -12,6 +12,11 @@ struct SettingsView: View {
     @State private var isCheckingUpdates: Bool = false
     @State private var historySearchText: String = ""
     @State private var showClearBrowsingDataSheet: Bool = false
+    @State private var contentAppeared: Bool = false
+    @FocusState private var searchFocused: Bool
+    @Namespace private var navNamespace
+    @Namespace private var themeNamespace
+    @Namespace private var tabNamespace
 
     private var filteredHistoryItems: [HistoryItem] {
         historyManager.search(query: historySearchText)
@@ -43,29 +48,27 @@ struct SettingsView: View {
 
             ScrollView(.vertical, showsIndicators: true) {
                 VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(selectedSection.title)
-                            .font(.system(size: 21, weight: .bold))
-                            .foregroundColor(.primary)
+                    headerView
 
-                        Text(selectedSection.subtitle)
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
+                    Group {
+                        switch selectedSection {
+                        case .general:
+                            generalSectionView
+                        case .appearance:
+                            appearanceSectionView
+                        case .browsing:
+                            browsingSectionView
+                        case .history:
+                            historySectionView
+                        case .downloads:
+                            downloadsSectionView
+                        }
                     }
-                    .padding(.bottom, 4)
-
-                    switch selectedSection {
-                    case .general:
-                        generalSectionView
-                    case .appearance:
-                        appearanceSectionView
-                    case .browsing:
-                        browsingSectionView
-                    case .history:
-                        historySectionView
-                    case .downloads:
-                        downloadsSectionView
-                    }
+                    .id("settings-content-\(selectedSection.rawValue)")
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    ))
 
                     Spacer(minLength: 40)
                 }
@@ -73,6 +76,8 @@ struct SettingsView: View {
                 .padding(.vertical, 28)
                 .frame(maxWidth: 720, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .opacity(contentAppeared ? 1 : 0)
+                .offset(y: contentAppeared ? 0 : 10)
             }
             .background(Color(nsColor: .windowBackgroundColor))
         }
@@ -82,26 +87,55 @@ struct SettingsView: View {
         }
         .onAppear {
             syncSectionWithURL()
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                contentAppeared = true
+            }
         }
-        .onChange(of: viewModel.activeTab.currentURL) { _ in
+        .onChange(of: viewModel.activeTab.currentURL) { _, _ in
             syncSectionWithURL()
         }
+        .animation(.spring(response: 0.34, dampingFraction: 0.84), value: selectedSection)
     }
 
     private func syncSectionWithURL() {
         guard let url = viewModel.activeTab.currentURL, url.scheme?.lowercased() == "isa" else { return }
         let host = url.host?.lowercased() ?? ""
+        let target: SettingsNavSection?
         if host == "history" {
-            selectedSection = .history
+            target = .history
         } else if host == "downloads" {
-            selectedSection = .downloads
+            target = .downloads
         } else if host == "appearance" {
-            selectedSection = .appearance
+            target = .appearance
         } else if host == "browsing" {
-            selectedSection = .browsing
+            target = .browsing
         } else if host == "general" || host == "settings" {
-            selectedSection = .general
+            target = .general
+        } else {
+            target = nil
         }
+        if let target, target != selectedSection {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                selectedSection = target
+            }
+        }
+    }
+
+    private var headerView: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(selectedSection.title)
+                .font(.system(size: 21, weight: .bold))
+                .foregroundColor(.primary)
+                .id("title-\(selectedSection.rawValue)")
+                .transition(.opacity.combined(with: .move(edge: .top)))
+
+            Text(selectedSection.subtitle)
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .id("subtitle-\(selectedSection.rawValue)")
+                .transition(.opacity)
+        }
+        .padding(.bottom, 4)
     }
 
     private var sidebarView: some View {
@@ -119,14 +153,19 @@ struct SettingsView: View {
                         section: section,
                         isSelected: selectedSection == section,
                         isHovered: hoveredSection == section,
+                        namespace: navNamespace,
                         onSelect: {
-                            selectedSection = section
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                selectedSection = section
+                            }
                         },
                         onHover: { hovering in
-                            if hovering {
-                                hoveredSection = section
-                            } else if hoveredSection == section {
-                                hoveredSection = nil
+                            withAnimation(.easeOut(duration: 0.15)) {
+                                if hovering {
+                                    hoveredSection = section
+                                } else if hoveredSection == section {
+                                    hoveredSection = nil
+                                }
                             }
                         }
                     )
@@ -151,12 +190,8 @@ struct SettingsView: View {
                     title: "Zen mode",
                     subtitle: "Distraction-free browsing. The top navigation bar hides completely and reveals smoothly when you hover the top edge."
                 ) {
-                    Toggle("", isOn: $viewModel.isZenModeEnabled)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
+                    SettingsSwitch(isOn: $viewModel.isZenModeEnabled, label: "Zen mode")
                 }
-
-
             }
 
             SettingsCardGroup {
@@ -164,9 +199,7 @@ struct SettingsView: View {
                     title: "Automatically check for updates",
                     subtitle: "isa checks its GitHub release feed in the background. Updates are signed, so they stay safe without notarization."
                 ) {
-                    Toggle("", isOn: $viewModel.automaticallyCheckForUpdates)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
+                    SettingsSwitch(isOn: $viewModel.automaticallyCheckForUpdates, label: "Automatically check for updates")
                 }
 
                 SettingsDivider()
@@ -175,31 +208,48 @@ struct SettingsView: View {
                     title: "isa 1.0 (WebKit)",
                     subtitle: updateCheckMessage ?? "Build 1000 · Signed updates from GitHub releases."
                 ) {
-                    Button(action: {
-                        isCheckingUpdates = true
-                        updateCheckMessage = "Checking GitHub releases..."
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                            isCheckingUpdates = false
-                            updateCheckMessage = "Up to date · Build 1000 is latest"
-                            if let url = URL(string: "https://github.com/drunkardleo-10/isa/releases") {
-                                NSWorkspace.shared.open(url)
+                    Button(action: checkForUpdates) {
+                        HStack(spacing: 5) {
+                            if isCheckingUpdates {
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .controlSize(.mini)
+                                    .frame(width: 12, height: 12)
                             }
+                            Text(isCheckingUpdates ? "Checking..." : "Check Now")
+                                .font(.system(size: 11.5, weight: .medium))
                         }
-                    }) {
-                        Text(isCheckingUpdates ? "Checking..." : "Check Now")
-                            .font(.system(size: 11.5, weight: .medium))
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .background(Color.primary.opacity(0.08))
-                            .cornerRadius(5)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 5)
-                                    .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
-                            )
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(Color.primary.opacity(isCheckingUpdates ? 0.05 : 0.08))
+                        .cornerRadius(5)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 5)
+                                .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
+                        )
+                        .scaleEffect(isCheckingUpdates ? 0.97 : 1.0)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isCheckingUpdates)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(SettingsPressableButtonStyle())
+                    .disabled(isCheckingUpdates)
                 }
+            }
+        }
+    }
+
+    private func checkForUpdates() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+            isCheckingUpdates = true
+            updateCheckMessage = "Checking GitHub releases..."
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                isCheckingUpdates = false
+                updateCheckMessage = "Up to date · Build 1000 is latest"
+            }
+            if let url = URL(string: "https://github.com/drunkardleo-10/isa/releases") {
+                NSWorkspace.shared.open(url)
             }
         }
     }
@@ -211,23 +261,30 @@ struct SettingsView: View {
                     title: "Theme mode",
                     subtitle: "Select your preferred color scheme or follow your macOS system preference."
                 ) {
-                    Picker("Theme", selection: Binding(
-                        get: { viewModel.theme },
-                        set: { newTheme in
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                viewModel.theme = newTheme
-                                viewModel.applyAppAppearance()
+                    SettingsPillPicker(
+                        options: AppTheme.allCases,
+                        selection: Binding(
+                            get: { viewModel.theme },
+                            set: { newTheme in
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
+                                    viewModel.theme = newTheme
+                                    viewModel.applyAppAppearance()
+                                }
+                                PerformanceMonitor.shared.log(event: "Theme", details: "Settings picker changed theme to \(newTheme.rawValue)")
                             }
-                            PerformanceMonitor.shared.log(event: "Theme", details: "Settings picker changed theme to \(newTheme.rawValue)")
-                        }
-                    )) {
-                        Label("System", systemImage: "circle.lefthalf.filled").tag(AppTheme.system)
-                        Label("Light", systemImage: "sun.max.fill").tag(AppTheme.light)
-                        Label("Dark", systemImage: "moon.fill").tag(AppTheme.dark)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(maxWidth: 240)
+                        ),
+                        namespace: themeNamespace,
+                        pillID: "themePill",
+                        title: { theme in
+                            switch theme {
+                            case .system: return "System"
+                            case .light: return "Light"
+                            case .dark: return "Dark"
+                            }
+                        },
+                        icon: { $0.iconName }
+                    )
+                    .frame(maxWidth: 270)
                 }
 
                 SettingsDivider()
@@ -236,13 +293,15 @@ struct SettingsView: View {
                     title: "Tab layout",
                     subtitle: "Choose whether tabs and navigation appear along the top bar or in an elegant left sidebar."
                 ) {
-                    Picker("Tab Layout", selection: $viewModel.tabPlacement) {
-                        Label("Top Bar", systemImage: "macwindow").tag(TabPlacement.top)
-                        Label("Left Sidebar", systemImage: "sidebar.left").tag(TabPlacement.left)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(maxWidth: 240)
+                    SettingsPillPicker(
+                        options: TabPlacement.allCases,
+                        selection: $viewModel.tabPlacement,
+                        namespace: tabNamespace,
+                        pillID: "tabPill",
+                        title: { $0.displayName },
+                        icon: { $0.iconName }
+                    )
+                    .frame(maxWidth: 270)
                 }
             }
         }
@@ -259,9 +318,7 @@ struct SettingsView: View {
                     title: "Block Ads & Trackers",
                     subtitle: "Filters cosmetic ads, intrusive scriptlets, and tracking network requests live across all open tabs."
                 ) {
-                    Toggle("", isOn: $viewModel.isAdBlockEnabled)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
+                    SettingsSwitch(isOn: $viewModel.isAdBlockEnabled, label: "Block Ads and Trackers")
                 }
 
                 SettingsDivider()
@@ -271,14 +328,15 @@ struct SettingsView: View {
                     subtitle: "\(formattedNet) network rules · \(formattedCos) cosmetic selectors"
                 ) {
                     HStack(spacing: 6) {
-                        Circle()
-                            .fill(viewModel.isAdBlockEnabled ? Color.green : Color.secondary)
-                            .frame(width: 7, height: 7)
+                        PulsingDot(color: .green, isActive: viewModel.isAdBlockEnabled)
 
                         Text(viewModel.isAdBlockEnabled ? "Active" : "Paused")
                             .font(.system(size: 11.5, weight: .medium))
                             .foregroundColor(viewModel.isAdBlockEnabled ? .green : .secondary)
+                            .contentTransition(.opacity)
+                            .id(viewModel.isAdBlockEnabled ? "active" : "paused")
                     }
+                    .animation(.spring(response: 0.3, dampingFraction: 0.75), value: viewModel.isAdBlockEnabled)
                 }
             }
 
@@ -320,24 +378,32 @@ struct SettingsView: View {
                     TextField("Search history…", text: $historySearchText)
                         .textFieldStyle(.plain)
                         .font(.system(size: 12))
+                        .focused($searchFocused)
 
                     if !historySearchText.isEmpty {
-                        Button(action: { historySearchText = "" }) {
+                        Button(action: {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                historySearchText = ""
+                            }
+                        }) {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(SettingsPressableButtonStyle(pressedScale: 0.9))
+                        .transition(.scale.combined(with: .opacity))
                     }
                 }
                 .padding(.horizontal, 9)
                 .padding(.vertical, 6)
-                .background(Color.primary.opacity(0.045))
+                .background(Color.primary.opacity(searchFocused ? 0.06 : 0.045))
                 .cornerRadius(7)
                 .overlay(
                     RoundedRectangle(cornerRadius: 7)
-                        .stroke(Color.primary.opacity(0.09), lineWidth: 0.5)
+                        .stroke(Color.primary.opacity(searchFocused ? 0.18 : 0.09), lineWidth: searchFocused ? 1.0 : 0.5)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.75), value: searchFocused)
                 )
+                .animation(.easeOut(duration: 0.18), value: searchFocused)
 
                 Spacer()
 
@@ -347,71 +413,25 @@ struct SettingsView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(Color.primary.opacity(0.05), in: Capsule())
+                    .contentTransition(.numericText(countsDown: false))
+                    .id(filteredHistoryItems.count)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.75), value: filteredHistoryItems.count)
 
-                Button(action: {
+                SettingsActionPill(
+                    title: "Clear Data...",
+                    systemImage: "trash",
+                    tone: .destructive,
+                    isEnabled: !historyManager.historyItems.isEmpty
+                ) {
                     showClearBrowsingDataSheet = true
-                }) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("Clear Data...")
-                            .font(.system(size: 11.5, weight: .medium))
-                    }
-                    .foregroundColor(historyManager.historyItems.isEmpty ? .secondary.opacity(0.4) : .red.opacity(0.9))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color.red.opacity(historyManager.historyItems.isEmpty ? 0.03 : 0.08))
-                    .cornerRadius(6)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.red.opacity(historyManager.historyItems.isEmpty ? 0.05 : 0.2), lineWidth: 0.5)
-                    )
                 }
-                .buttonStyle(.plain)
-                .disabled(historyManager.historyItems.isEmpty)
             }
             .padding(.bottom, 4)
 
             if historyManager.historyItems.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 34))
-                        .foregroundColor(.secondary.opacity(0.35))
-                    Text("No Browsing History")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.primary)
-                    Text("Websites you visit will appear here.")
-                        .font(.system(size: 11.5))
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 44)
-                .background(Color.primary.opacity(0.025))
-                .cornerRadius(9)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9)
-                        .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
-                )
+                historyEmptyState(icon: "clock.arrow.circlepath", title: "No Browsing History", subtitle: "Websites you visit will appear here.")
             } else if filteredHistoryItems.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 32))
-                        .foregroundColor(.secondary.opacity(0.35))
-                    Text("No Results Found")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.primary)
-                    Text("No history matching \"\(historySearchText)\"")
-                        .font(.system(size: 11.5))
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 44)
-                .background(Color.primary.opacity(0.025))
-                .cornerRadius(9)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9)
-                        .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
-                )
+                historyEmptyState(icon: "magnifyingglass", title: "No Results Found", subtitle: "No history matching \"\(historySearchText)\"")
             } else {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     ForEach(groupedHistoryItems, id: \.0) { groupName, items in
@@ -440,7 +460,9 @@ struct SettingsView: View {
                                             }
                                         },
                                         onDelete: {
-                                            historyManager.deleteItem(id: item.id)
+                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                                historyManager.deleteItem(id: item.id)
+                                            }
                                         }
                                     )
 
@@ -454,6 +476,29 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func historyEmptyState(icon: String, title: String, subtitle: String) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 34))
+                .foregroundColor(.secondary.opacity(0.35))
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.primary)
+            Text(subtitle)
+                .font(.system(size: 11.5))
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 44)
+        .background(Color.primary.opacity(0.025))
+        .cornerRadius(9)
+        .overlay(
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+        )
+        .transition(.opacity.combined(with: .scale(scale: 0.97)))
     }
 
     private var downloadsSectionView: some View {
@@ -472,27 +517,10 @@ struct SettingsView: View {
 
                     Spacer()
 
-                    Button(action: {
+                    SettingsActionPill(title: "Show in Finder", systemImage: "folder") {
                         let downloadsDir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
                         NSWorkspace.shared.open(downloadsDir)
-                    }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "folder")
-                                .font(.system(size: 11))
-                            Text("Show in Finder")
-                                .font(.system(size: 11.5, weight: .medium))
-                        }
-                        .foregroundColor(.primary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color.primary.opacity(0.08))
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
-                        )
                     }
-                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -512,55 +540,30 @@ struct SettingsView: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(Color.accentColor.opacity(0.12), in: Capsule())
+                        .transition(.scale.combined(with: .opacity))
                 }
 
                 if !downloadManager.items.isEmpty {
-                    Button(action: {
-                        downloadManager.clearFinished()
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "trash")
-                                .font(.system(size: 10))
-                            Text("Clear List")
-                                .font(.system(size: 11, weight: .medium))
+                    SettingsActionPill(title: "Clear List", systemImage: "trash") {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                            downloadManager.clearFinished()
                         }
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3.5)
-                        .background(Color.primary.opacity(0.05))
-                        .cornerRadius(5)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 4)
             .padding(.top, 4)
+            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: downloadManager.hasActiveDownloads)
 
             if downloadManager.items.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: "arrow.down.circle")
-                        .font(.system(size: 34))
-                        .foregroundColor(.secondary.opacity(0.35))
-                    Text("No Downloads")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.primary)
-                    Text("Files downloaded from web pages will appear here.")
-                        .font(.system(size: 11.5))
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 44)
-                .background(Color.primary.opacity(0.025))
-                .cornerRadius(9)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9)
-                        .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
-                )
+                historyEmptyState(icon: "arrow.down.circle", title: "No Downloads", subtitle: "Files downloaded from web pages will appear here.")
             } else {
                 SettingsCardGroup {
                     ForEach(Array(downloadManager.items.enumerated()), id: \.element.id) { index, item in
                         SettingsDownloadRowView(item: item, onRemove: {
-                            downloadManager.removeItem(id: item.id)
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                downloadManager.removeItem(id: item.id)
+                            }
                         })
 
                         if index < downloadManager.items.count - 1 {
@@ -580,12 +583,15 @@ private struct SettingsHistoryRowView: View {
     let onDelete: () -> Void
 
     @State private var isHovered: Bool = false
+    @State private var isPressed: Bool = false
     @State private var favicon: NSImage? = nil
 
     var body: some View {
         Button(action: {
             let inNewTab = NSEvent.modifierFlags.contains(.command)
-            onSelect(inNewTab)
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                onSelect(inNewTab)
+            }
         }) {
             HStack(spacing: 12) {
                 if let fav = favicon {
@@ -621,7 +627,11 @@ private struct SettingsHistoryRowView: View {
                     .font(.system(size: 11))
                     .foregroundColor(.secondary.opacity(0.8))
 
-                Button(action: onDelete) {
+                Button(action: {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.7)) {
+                        onDelete()
+                    }
+                }) {
                     Image(systemName: "xmark")
                         .font(.system(size: 8.5, weight: .bold))
                         .foregroundColor(.secondary)
@@ -630,19 +640,25 @@ private struct SettingsHistoryRowView: View {
                             Circle().fill(Color.primary.opacity(isHovered ? 0.08 : 0))
                         )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(SettingsPressableButtonStyle(pressedScale: 0.85))
                 .opacity(isHovered ? 1.0 : 0.0)
+                .scaleEffect(isHovered ? 1.0 : 0.8)
+                .animation(.spring(response: 0.22, dampingFraction: 0.7), value: isHovered)
                 .help("Delete from history")
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
             .background(isHovered ? Color.primary.opacity(0.04) : Color.clear)
+            .scaleEffect(isPressed ? 0.985 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.75), value: isPressed)
+            .animation(.easeOut(duration: 0.15), value: isHovered)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovering in
             isHovered = hovering
         }
+        .pressEvents(onPress: { isPressed = true }, onRelease: { isPressed = false })
         .onAppear {
             loadFavicon()
         }
@@ -673,7 +689,9 @@ private struct SettingsHistoryRowView: View {
         URLSession.shared.dataTask(with: url) { data, _, _ in
             guard let data = data, let img = NSImage(data: data) else { return }
             DispatchQueue.main.async {
-                self.favicon = img
+                withAnimation(.easeOut(duration: 0.25)) {
+                    self.favicon = img
+                }
             }
         }.resume()
     }
@@ -684,6 +702,7 @@ private struct SettingsDownloadRowView: View {
     let onRemove: () -> Void
 
     @State private var isHovered: Bool = false
+    @State private var isPressed: Bool = false
 
     private static let byteFormatter: ByteCountFormatter = {
         let formatter = ByteCountFormatter()
@@ -753,12 +772,15 @@ private struct SettingsDownloadRowView: View {
                     .font(.system(size: 11))
                     .foregroundColor(item.status == .downloading ? .secondary : (item.status == .completed ? .secondary : (item.status == .cancelled ? .secondary.opacity(0.8) : .red)))
                     .lineLimit(1)
+                    .contentTransition(.opacity)
+                    .id(progressSubtitle)
 
                 if item.status == .downloading {
                     ProgressView(value: item.progress, total: 1.0)
                         .progressViewStyle(.linear)
                         .frame(height: 3)
                         .padding(.top, 1)
+                        .animation(.easeOut(duration: 0.25), value: item.progress)
                 }
             }
 
@@ -773,7 +795,7 @@ private struct SettingsDownloadRowView: View {
                         .foregroundColor(.secondary)
                         .font(.system(size: 15))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(SettingsPressableButtonStyle(pressedScale: 0.88))
                 .help("Cancel Download")
 
             case .completed:
@@ -794,7 +816,7 @@ private struct SettingsDownloadRowView: View {
                             .background(Color.primary.opacity(isHovered ? 0.08 : 0.04))
                             .cornerRadius(5)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(SettingsPressableButtonStyle())
                         .help("Show in Finder")
 
                         Button(action: {
@@ -812,7 +834,7 @@ private struct SettingsDownloadRowView: View {
                             .background(Color.primary.opacity(isHovered ? 0.12 : 0.08))
                             .cornerRadius(5)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(SettingsPressableButtonStyle())
                         .help("Open File")
                     }
 
@@ -825,8 +847,10 @@ private struct SettingsDownloadRowView: View {
                                 Circle().fill(Color.primary.opacity(isHovered ? 0.08 : 0))
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(SettingsPressableButtonStyle(pressedScale: 0.85))
                     .opacity(isHovered ? 1.0 : 0.0)
+                    .scaleEffect(isHovered ? 1.0 : 0.8)
+                    .animation(.spring(response: 0.22, dampingFraction: 0.7), value: isHovered)
                     .help("Remove from list")
                 }
 
@@ -840,18 +864,23 @@ private struct SettingsDownloadRowView: View {
                             Circle().fill(Color.primary.opacity(isHovered ? 0.08 : 0))
                         )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(SettingsPressableButtonStyle(pressedScale: 0.85))
                 .opacity(isHovered ? 1.0 : 0.0)
+                .scaleEffect(isHovered ? 1.0 : 0.8)
+                .animation(.spring(response: 0.22, dampingFraction: 0.7), value: isHovered)
                 .help("Remove from list")
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(isHovered ? Color.primary.opacity(0.04) : Color.clear)
+        .scaleEffect(isPressed ? 0.99 : 1.0)
+        .animation(.easeOut(duration: 0.15), value: isHovered)
         .contentShape(Rectangle())
         .onHover { hovering in
             isHovered = hovering
         }
+        .pressEvents(onPress: { isPressed = true }, onRelease: { isPressed = false })
         .contextMenu {
             if let url = item.destinationURL {
                 Button("Open File") {

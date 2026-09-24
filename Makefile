@@ -1,11 +1,14 @@
 YOUTUBE_URL ?= https://www.youtube.com/watch?v=dQw4w9WgXcQ
 
-.PHONY: all build baseline baseline-safari
+.PHONY: all build baseline baseline-safari dmg
 
 all: baseline-safari
 
 build:
 	xcodebuild -project isa.xcodeproj -scheme isa -configuration Debug build
+
+dmg:
+	./scripts/build_dmg.sh
 
 baseline: build
 	swift scripts/baseline_runner.swift --isa --url "$(YOUTUBE_URL)"

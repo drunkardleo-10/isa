@@ -143,9 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if let icon = NSImage(named: "AppIcon")
             ?? (Bundle.main.path(forResource: "AppIcon", ofType: "icns").flatMap { NSImage(contentsOfFile: $0) })
-            ?? (Bundle.main.path(forResource: "isa_browser", ofType: "png").flatMap { NSImage(contentsOfFile: $0) })
-            ?? NSImage(contentsOfFile: "Assets/AppIcon.icns")
-            ?? NSImage(contentsOfFile: "Assets/isa_browser.png") {
+            ?? NSImage(contentsOfFile: "Assets/AppIcon.icns") {
             NSApp.applicationIconImage = icon
         }
 

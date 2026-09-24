@@ -35,7 +35,6 @@
 		CC28BE87983ED7AA53A62D8D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35FF797B381C4B5514E1C3E0 /* SettingsView.swift */; };
 		D003D2BBA8D57BF873C46FD5 /* AdBlockStatusPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52EBA0EC0EF38D81593115C /* AdBlockStatusPopover.swift */; };
 		D6FAAA3115D275E76FA3CB85 /* back.svg in Resources */ = {isa = PBXBuildFile; fileRef = 91BB8B6F9E31DAD0ED03D68A /* back.svg */; };
-		D988EAF27CFED58E485DD3C9 /* isa_browser.png in Resources */ = {isa = PBXBuildFile; fileRef = 3D10A34ECBD5ABD2009E9C28 /* isa_browser.png */; };
 		DD3AD5FEE850A64B1C81643B /* SettingsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFF529FF11BF0275E5EB2D23 /* SettingsComponents.swift */; };
 		E21FF18587448405A1F09F77 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2BE711EB3D4150F4AD1A75B /* AppTheme.swift */; };
 		E5751AEB2732718B8D4C99FA /* ShortcutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA693DFF0093D28409A09782 /* ShortcutsView.swift */; };
@@ -53,7 +52,6 @@
 		28F1BD757E39349EEBF7733D /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
 		35FF797B381C4B5514E1C3E0 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		3C4AC25A5341FD39BC019033 /* BrowserViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserViewModel.swift; sourceTree = "<group>"; };
-		3D10A34ECBD5ABD2009E9C28 /* isa_browser.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = isa_browser.png; sourceTree = "<group>"; };
 		3D53DA9D0B405C5FC91DBBE3 /* PinnedTabRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedTabRecord.swift; sourceTree = "<group>"; };
 		3E4D435810BDC714A57AAEC0 /* FindBarOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindBarOverlay.swift; sourceTree = "<group>"; };
 		406E74793707E3327B8DB619 /* DownloadsPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsPopoverView.swift; sourceTree = "<group>"; };
@@ -138,7 +136,6 @@
 				91BB8B6F9E31DAD0ED03D68A /* back.svg */,
 				9F6A13D7569E2BCF516C073A /* forward.svg */,
 				700B59D84A0CDB7D7762F1D3 /* home.svg */,
-				3D10A34ECBD5ABD2009E9C28 /* isa_browser.png */,
 				CCF736D58D4B1B9DD78B6DC7 /* reload.svg */,
 			);
 			path = Assets;
@@ -307,7 +304,6 @@
 				FD89C2DA18D8E9BAAFF593DA /* cosmetic-filters.json in Resources */,
 				2C1D5953FD6A3BBF4C07A068 /* forward.svg in Resources */,
 				18CECF81E2F415A5079FBF21 /* home.svg in Resources */,
-				D988EAF27CFED58E485DD3C9 /* isa_browser.png in Resources */,
 				59F91C1365AD69A23C4D6FC6 /* reload.svg in Resources */,
 				68B047D633578BB33BF44EC1 /* scriptlets.json in Resources */,
 			);
