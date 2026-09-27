@@ -141,6 +141,7 @@ struct WebView: NSViewRepresentable {
                 }
                 self.tab?.canGoBack = webView.canGoBack
                 self.tab?.canGoForward = webView.canGoForward
+                self.tab?.applyRememberedZoom()
             }
         }
 
@@ -162,6 +163,7 @@ struct WebView: NSViewRepresentable {
                 }
                 tab.canGoBack = webView.canGoBack
                 tab.canGoForward = webView.canGoForward
+                tab.applyRememberedZoom()
                 PerformanceMonitor.shared.log(event: "LoadFinish", details: "Loaded \"\(tab.pageTitle)\" in \(durationMs)ms")
                 if let host = webView.url?.host {
                     AdBlockController.recordNavigation(for: host)

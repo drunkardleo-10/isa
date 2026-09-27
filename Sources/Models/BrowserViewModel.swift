@@ -28,6 +28,74 @@ final class BrowserWebView: WKWebView {
     private static let flickTime: TimeInterval = 0.25
     private static let show: CGFloat = 6
 
+    override init(frame: CGRect, configuration: WKWebViewConfiguration) {
+        super.init(frame: frame, configuration: configuration)
+        allowsMagnification = true
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        allowsMagnification = true
+    }
+
+    override func smartMagnify(with event: NSEvent) {
+        guard allowsMagnification else {
+            super.smartMagnify(with: event)
+            return
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        let js = BrowserWebView.smart(x: point.x, y: point.y, scale: magnification, width: bounds.width)
+        evaluateJavaScript(js) { [weak self] value, _ in
+            DispatchQueue.main.async {
+                guard let self = self,
+                      let text = value as? String,
+                      let data = text.data(using: .utf8),
+                      let zoom = try? JSONDecoder().decode(SmartZoom.self, from: data)
+                else { return }
+                self.setMagnification(zoom.scale, centeredAt: point)
+                self.evaluateJavaScript("window.scrollTo(\(zoom.x), \(zoom.y))")
+            }
+        }
+    }
+
+    private struct SmartZoom: Decodable {
+        var scale: CGFloat
+        var x: CGFloat
+        var y: CGFloat
+    }
+
+    static func smart(x: CGFloat, y: CGFloat, scale: CGFloat, width: CGFloat) -> String {
+        """
+        (function (x, y, s, W) {
+          var ox = window.scrollX, oy = window.scrollY;
+          var cx = x / s, cy = y / s;
+          if (s > 1.05) {
+            return JSON.stringify({ scale: 1, x: Math.max(0, ox + cx - x), y: Math.max(0, oy + cy - y) });
+          }
+          var el = document.elementFromPoint(cx, cy);
+          if (!el) return null;
+          var vw = W / s, best = null, enough = Math.max(240, vw * 0.2);
+          for (var e = el; e && e !== document.documentElement; e = e.parentElement) {
+            var r = e.getBoundingClientRect();
+            if (r.width < 80 || r.height < 16) continue;
+            var d = getComputedStyle(e).display;
+            if (d === 'inline' || d === 'contents') continue;
+            if (!best) best = r;
+            if (r.width >= enough) { best = r; break; }
+          }
+          if (!best) best = el.getBoundingClientRect();
+          var pad = 12;
+          var target = Math.max(1, Math.min(3, W / (best.width + 2 * pad)));
+          if (target < 1.15) target = Math.min(3, s * 2);
+          return JSON.stringify({
+            scale: target,
+            x: Math.max(0, ox + best.left - pad),
+            y: Math.max(0, oy + cy - y / target)
+          });
+        })(\(x), \(y), \(scale), \(width))
+        """
+    }
+
     var onPull: ((Pull?) -> Void)?
 
     override func otherMouseDown(with event: NSEvent) {
@@ -226,6 +294,27 @@ final class BrowserWebView: WKWebView {
             }
         }
 
+        if isCmd && (chars == "+" || chars == "=" || event.keyCode == 24) {
+            DispatchQueue.main.async { [weak self] in
+                self?.tab?.magnify(by: 1.1)
+            }
+            return true
+        }
+
+        if isCmd && (chars == "-" || event.keyCode == 27) {
+            DispatchQueue.main.async { [weak self] in
+                self?.tab?.magnify(by: 1 / 1.1)
+            }
+            return true
+        }
+
+        if isCmd && (chars == "0" || event.keyCode == 29) {
+            DispatchQueue.main.async { [weak self] in
+                self?.tab?.resetZoom()
+            }
+            return true
+        }
+
         if event.keyCode == 51 && flags.isEmpty {
             return false
         }
@@ -311,6 +400,8 @@ final class Tab: Identifiable, ObservableObject {
     private var findCancellable: AnyCancellable?
     @Published var pageError: PageErrorInfo? = nil
     @Published var pull: Pull? = nil
+    static let defaultZoom: CGFloat = 1.0
+    @Published var zoom: CGFloat = 1.0
 
     @Published var webView: WKWebView? = nil {
         didSet {
@@ -367,6 +458,44 @@ final class Tab: Identifiable, ObservableObject {
         if isPlayingMedia != playing {
             isPlayingMedia = playing
         }
+    }
+
+    func rememberZoom() {
+        guard let host = currentURL?.host, !host.isEmpty else { return }
+        if abs(zoom - Tab.defaultZoom) < 0.01 {
+            UserDefaults.standard.removeObject(forKey: "zoom." + host)
+        } else {
+            UserDefaults.standard.set(Double(zoom), forKey: "zoom." + host)
+        }
+    }
+
+    func applyRememberedZoom() {
+        guard let host = currentURL?.host, !host.isEmpty else { return }
+        let kept = (UserDefaults.standard.object(forKey: "zoom." + host) as? Double).map { CGFloat($0) }
+            ?? Tab.defaultZoom
+        guard let wv = webView, abs(kept - wv.pageZoom) > 0.004 else { return }
+        wv.pageZoom = kept
+        zoom = kept
+    }
+
+    func magnify(to value: CGFloat) {
+        let wanted = min(3.0, max(0.4, value))
+        guard let wv = webView else { return }
+        guard abs(wanted - wv.pageZoom) > 0.004 else { return }
+        wv.pageZoom = wanted
+        zoom = wanted
+        rememberZoom()
+    }
+
+    func magnify(by factor: CGFloat) {
+        let current = webView?.pageZoom ?? zoom
+        magnify(to: current * factor)
+    }
+
+    func resetZoom() {
+        magnify(to: Tab.defaultZoom)
+        guard let wv = webView, wv.magnification != 1 else { return }
+        wv.magnification = 1
     }
 
     func reload() {
@@ -599,6 +728,7 @@ final class Tab: Identifiable, ObservableObject {
         newWebView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
         self.webView = newWebView
         setupObservations(for: newWebView)
+        applyRememberedZoom()
         if isMuted {
             applyMutedState()
         }
@@ -1332,6 +1462,18 @@ final class BrowserViewModel: ObservableObject {
     func reloadActiveTab() {
         PerformanceMonitor.shared.log(event: "Navigation", details: "Reloading active tab")
         activeTab.reload()
+    }
+
+    func zoomInActiveTab() {
+        activeTab.magnify(by: 1.1)
+    }
+
+    func zoomOutActiveTab() {
+        activeTab.magnify(by: 1 / 1.1)
+    }
+
+    func resetZoomActiveTab() {
+        activeTab.resetZoom()
     }
 
     func goBackActiveTab() {

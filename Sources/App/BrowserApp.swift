@@ -88,6 +88,23 @@ struct BrowserApp: App {
                 .disabled(!viewModel.activeTab.canGoForward)
             }
 
+            CommandMenu("View") {
+                Button("Zoom In") {
+                    viewModel.zoomInActiveTab()
+                }
+                .keyboardShortcut("+", modifiers: .command)
+
+                Button("Zoom Out") {
+                    viewModel.zoomOutActiveTab()
+                }
+                .keyboardShortcut("-", modifiers: .command)
+
+                Button("Actual Size") {
+                    viewModel.resetZoomActiveTab()
+                }
+                .keyboardShortcut("0", modifiers: .command)
+            }
+
             CommandMenu("Find") {
                 Button("Find in Page…") {
                     viewModel.toggleFindInPage()
