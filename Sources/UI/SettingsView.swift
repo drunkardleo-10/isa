@@ -174,7 +174,7 @@ struct SettingsView: View {
 
             Spacer()
 
-            Text("isa 1.0 (WebKit)")
+            Text("isa \(Updater.version) (WebKit)")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary.opacity(0.65))
                 .padding(.horizontal, 16)
