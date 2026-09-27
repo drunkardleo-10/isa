@@ -8,6 +8,190 @@ import AppKit
 final class BrowserWebView: WKWebView {
     weak var tab: Tab?
 
+    private enum Axis { case across, down }
+
+    private var sideways: CGFloat = 0
+    private var gatheredX: CGFloat = 0
+    private var gatheredY: CGFloat = 0
+    private var axis: Axis?
+    private var back = true
+    private var free: Bool?
+    private var asked: Date?
+    private var spent = false
+    private var armedNow = false
+    private var showing = false
+    private var going = false
+    private var pulls = 0
+
+    private static let arm: CGFloat = 70
+    private static let flick: CGFloat = 30
+    private static let flickTime: TimeInterval = 0.25
+    private static let show: CGFloat = 6
+
+    var onPull: ((Pull?) -> Void)?
+
+    override func otherMouseDown(with event: NSEvent) {
+        switch event.buttonNumber {
+        case 3 where canGoBack:
+            tab?.lastActiveTime = Date()
+            tab?.pageError = nil
+            goBack()
+        case 4 where canGoForward:
+            tab?.lastActiveTime = Date()
+            tab?.pageError = nil
+            goForward()
+        default:
+            super.otherMouseDown(with: event)
+        }
+    }
+
+    override func swipe(with event: NSEvent) {
+        if event.deltaX > 0, (tab?.canGoBack == true) || canGoBack {
+            settle(Pull(back: true, travel: BrowserWebView.arm, armed: true, going: true))
+            tab?.lastActiveTime = Date()
+            tab?.pageError = nil
+            goBack()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) { [weak self] in
+                self?.settle(nil)
+            }
+        } else if event.deltaX < 0, (tab?.canGoForward == true) || canGoForward {
+            settle(Pull(back: false, travel: BrowserWebView.arm, armed: true, going: true))
+            tab?.lastActiveTime = Date()
+            tab?.pageError = nil
+            goForward()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) { [weak self] in
+                self?.settle(nil)
+            }
+        } else {
+            super.swipe(with: event)
+        }
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        super.scrollWheel(with: event)
+        guard event.momentumPhase == [] else { return }
+
+        switch event.phase {
+        case .mayBegin, .began:
+            sideways = 0
+            gatheredX = 0
+            gatheredY = 0
+            axis = nil
+            free = nil
+            asked = nil
+            spent = false
+            armedNow = false
+            showing = false
+            pulls += 1
+            if going {
+                going = false
+                onPull?(nil)
+            }
+        case .changed:
+            guard !spent else { return }
+            if axis == nil {
+                gatheredX += abs(event.scrollingDeltaX)
+                gatheredY += abs(event.scrollingDeltaY)
+                sideways += event.scrollingDeltaX
+                guard gatheredX + gatheredY > 6 else { return }
+                axis = gatheredX > gatheredY * 1.3 ? .across : .down
+                if axis == .down {
+                    spent = true
+                    return
+                }
+                back = sideways > 0
+                let canBack = (tab?.canGoBack == true) || canGoBack
+                let canForward = (tab?.canGoForward == true) || canGoForward
+                if back ? !canBack : !canForward {
+                    spent = true
+                    return
+                }
+                asked = Date()
+                free = true
+                tell()
+                return
+            }
+            sideways += event.scrollingDeltaX
+            tell()
+        case .ended:
+            release()
+        case .cancelled:
+            spent = true
+            settle(nil)
+        default:
+            break
+        }
+    }
+
+    func answer(free yes: Bool) {
+        guard axis != .down, !spent else { return }
+        guard yes else {
+            return
+        }
+        guard free == nil else { return }
+        free = true
+        tell()
+    }
+
+    private var travel: CGFloat {
+        max(0, back ? sideways : -sideways)
+    }
+
+    private func tell() {
+        if free == nil {
+            free = true
+        }
+        guard free == true else { return }
+
+        let travel = travel
+        guard travel >= BrowserWebView.show else {
+            if showing { settle(nil) }
+            return
+        }
+
+        let armed = travel >= BrowserWebView.arm
+        if armed != armedNow {
+            NSHapticFeedbackManager.defaultPerformer.perform(
+                armed ? .levelChange : .alignment, performanceTime: .now
+            )
+        }
+        armedNow = armed
+        settle(Pull(back: back, travel: travel, armed: armed, going: false))
+    }
+
+    private func release() {
+        defer { spent = true }
+        let flicked = !spent && free == true && travel >= BrowserWebView.flick
+            && (asked.map { Date().timeIntervalSince($0) <= BrowserWebView.flickTime } ?? false)
+        guard !spent, free == true, armedNow || flicked else {
+            settle(nil)
+            return
+        }
+        going = true
+        settle(Pull(back: back, travel: travel, armed: true, going: true))
+        if back {
+            tab?.lastActiveTime = Date()
+            tab?.pageError = nil
+            goBack()
+        } else {
+            tab?.lastActiveTime = Date()
+            tab?.pageError = nil
+            goForward()
+        }
+        pulls += 1
+        let mine = pulls
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) { [weak self] in
+            guard let self = self, self.pulls == mine else { return }
+            self.going = false
+            self.settle(nil)
+        }
+    }
+
+    private func settle(_ pull: Pull?) {
+        showing = pull != nil
+        onPull?(pull)
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let isCmd = flags.contains(.command) && !flags.contains(.control) && !flags.contains(.option)
@@ -70,6 +254,10 @@ final class TabScriptHandler: NSObject, WKScriptMessageHandler {
                 self.tab?.isDOMPlayingMedia = isPlaying
                 self.tab?.updateMediaPlaybackState()
             }
+        } else if message.name == "swipeNavigation", let dict = message.body as? [String: Any], let side = dict["side"] as? String {
+            DispatchQueue.main.async {
+                (self.tab?.webView as? BrowserWebView)?.answer(free: side == "free")
+            }
         }
     }
 }
@@ -122,6 +310,7 @@ final class Tab: Identifiable, ObservableObject {
     let findState: TabFindState
     private var findCancellable: AnyCancellable?
     @Published var pageError: PageErrorInfo? = nil
+    @Published var pull: Pull? = nil
 
     @Published var webView: WKWebView? = nil {
         didSet {
@@ -282,6 +471,8 @@ final class Tab: Identifiable, ObservableObject {
     }
 
     private func invalidateObservations() {
+        (webView as? BrowserWebView)?.onPull = nil
+        pull = nil
         titleObservation?.invalidate()
         titleObservation = nil
         urlObservation?.invalidate()
@@ -387,9 +578,24 @@ final class Tab: Identifiable, ObservableObject {
         configuration.userContentController.addUserScript(Tab.mediaScript)
         configuration.userContentController.add(TabScriptHandler(tab: self), name: "mediaPlaybackState")
 
+        let swipeScript = WKUserScript(
+            source: Swipe.watch,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        configuration.userContentController.addUserScript(swipeScript)
+        configuration.userContentController.add(TabScriptHandler(tab: self), name: "swipeNavigation")
+
         AdBlockController.apply(to: configuration, host: currentURL?.host)
         let newWebView = BrowserWebView(frame: .zero, configuration: configuration)
         newWebView.tab = self
+        newWebView.allowsBackForwardNavigationGestures = false
+        Swipe.calm(newWebView)
+        newWebView.onPull = { [weak self] pull in
+            DispatchQueue.main.async {
+                self?.pull = pull
+            }
+        }
         newWebView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
         self.webView = newWebView
         setupObservations(for: newWebView)

@@ -256,10 +256,31 @@ struct WebView: NSViewRepresentable {
     }
 }
 
+final class PassthroughHostingView<Content: View>: NSHostingView<Content> {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+}
+
 final class TabContainerView: NSView {
     private weak var currentWebView: WKWebView?
     private var imageView: NSImageView?
     private var reloadingLabel: NSTextField?
+    private var discHostingView: NSHostingView<SwipeOverlayView>?
+
+    func updatePull(_ pull: Pull?) {
+        if let hosting = discHostingView {
+            hosting.rootView = SwipeOverlayView(pull: pull)
+        } else if pull != nil {
+            let hosting = PassthroughHostingView(rootView: SwipeOverlayView(pull: pull))
+            hosting.wantsLayer = true
+            hosting.layer?.backgroundColor = .clear
+            hosting.frame = bounds
+            hosting.autoresizingMask = [.width, .height]
+            addSubview(hosting)
+            discHostingView = hosting
+        }
+    }
 
     func update(tab: Tab, coordinator: WebView.Coordinator) {
         if let webView = tab.webView {
@@ -268,12 +289,18 @@ final class TabContainerView: NSView {
                 currentWebView = webView
                 imageView = nil
                 reloadingLabel = nil
+                discHostingView = nil
                 webView.navigationDelegate = coordinator
                 webView.uiDelegate = coordinator
                 webView.autoresizingMask = [.width, .height]
                 webView.frame = bounds
                 addSubview(webView)
+                (webView as? BrowserWebView)?.onPull = { [weak self, weak tab] pull in
+                    tab?.pull = pull
+                    self?.updatePull(pull)
+                }
             }
+            updatePull(tab.pull)
             if tab.isReloading && tab.snapshotImage != nil {
                 showReloadingOverlay()
             } else {
@@ -284,6 +311,7 @@ final class TabContainerView: NSView {
                 subviews.forEach { $0.removeFromSuperview() }
                 currentWebView = nil
                 reloadingLabel = nil
+                discHostingView = nil
                 let iv = NSImageView(frame: bounds)
                 iv.image = snapshot
                 iv.imageScaling = .scaleAxesIndependently
@@ -297,6 +325,7 @@ final class TabContainerView: NSView {
                 currentWebView = nil
                 imageView = nil
                 reloadingLabel = nil
+                discHostingView = nil
             }
         }
     }

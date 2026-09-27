@@ -710,16 +710,12 @@ struct ContentView: View {
                         .opacity(tab.id == viewModel.selectedTabId ? 1 : 0)
                         .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isAddressOverlayPresented && !isShieldPopoverPresented && !isDownloadsPopoverPresented && !viewModel.isHistoryViewPresented)
                 } else if !tab.isNewTabState || tab.webView != nil || tab.isSleeping {
-                    ZStack {
-                        WebView(tab: tab)
-                        if let error = tab.pageError {
-                            PageCrashErrorView(error: error) {
-                                tab.reload()
-                            }
-                        }
-                    }
-                    .opacity(tab.id == viewModel.selectedTabId && !tab.isNewTabState ? 1 : 0)
-                    .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isNewTabState && !tab.isAddressOverlayPresented && !isShieldPopoverPresented && !isDownloadsPopoverPresented && !viewModel.isHistoryViewPresented)
+                    TabContentView(
+                        tab: tab,
+                        viewModel: viewModel,
+                        isShieldPopoverPresented: isShieldPopoverPresented,
+                        isDownloadsPopoverPresented: isDownloadsPopoverPresented
+                    )
                 }
             }
 
@@ -2912,6 +2908,26 @@ struct TabPillView: View {
             return host
         }
         return "New Tab"
+    }
+}
+
+struct TabContentView: View {
+    @ObservedObject var tab: Tab
+    @ObservedObject var viewModel: BrowserViewModel
+    let isShieldPopoverPresented: Bool
+    let isDownloadsPopoverPresented: Bool
+
+    var body: some View {
+        ZStack {
+            WebView(tab: tab)
+            if let error = tab.pageError {
+                PageCrashErrorView(error: error) {
+                    tab.reload()
+                }
+            }
+        }
+        .opacity(tab.id == viewModel.selectedTabId && !tab.isNewTabState ? 1 : 0)
+        .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isNewTabState && !tab.isAddressOverlayPresented && !isShieldPopoverPresented && !isDownloadsPopoverPresented && !viewModel.isHistoryViewPresented)
     }
 }
 
