@@ -138,6 +138,24 @@ final class HistoryManager: ObservableObject {
         }
     }
 
+    func importItems(_ items: [HistoryItem]) -> Int {
+        var existing = Set(historyItems.map { $0.url })
+        var addedCount = 0
+        for item in items {
+            guard !existing.contains(item.url) else { continue }
+            existing.insert(item.url)
+            historyItems.append(item)
+            addedCount += 1
+        }
+        if historyItems.count > maxHistoryItems {
+            historyItems = Array(historyItems.prefix(maxHistoryItems))
+        }
+        if addedCount > 0 {
+            saveHistory()
+        }
+        return addedCount
+    }
+
     func updateTitle(for url: URL, title: String) {
         let urlString = url.absoluteString
         guard !urlString.isEmpty, url.scheme?.lowercased() != "isa" else { return }

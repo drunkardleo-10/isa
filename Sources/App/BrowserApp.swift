@@ -17,6 +17,12 @@ struct BrowserApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Welcome Tour…") {
+                    viewModel.showOnboarding()
+                }
+            }
+
             CommandGroup(replacing: .newItem) {
                 Button("New Tab") {
                     viewModel.createNewTab()
@@ -145,6 +151,12 @@ struct BrowserApp: App {
                             }
                         }
                     }
+                }
+            }
+
+            CommandMenu("Help") {
+                Button("isa Welcome Tour…") {
+                    viewModel.showOnboarding()
                 }
             }
         }

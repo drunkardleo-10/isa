@@ -837,6 +837,13 @@ final class BrowserViewModel: ObservableObject {
     @Published var isBenchmarkRunning: Bool = false
     @Published var isHistoryViewPresented: Bool = false
     @Published var isClearHistoryDialogPresented: Bool = false
+    @Published var isOnboardingPresented: Bool = {
+        !UserDefaults.standard.bool(forKey: "isa_onboarding_completed")
+    }() {
+        didSet {
+            UserDefaults.standard.set(!isOnboardingPresented, forKey: "isa_onboarding_completed")
+        }
+    }
     private var tabCancellables = Set<AnyCancellable>()
     private var sleepMaintenanceTimer: Timer?
     private var memoryPressureSource: DispatchSourceMemoryPressure?
@@ -931,6 +938,19 @@ final class BrowserViewModel: ObservableObject {
         withAnimation(.spring(response: 0.22, dampingFraction: 0.86)) {
             isHistoryViewPresented = true
         }
+    }
+
+    func showOnboarding() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            isOnboardingPresented = true
+        }
+    }
+
+    func completeOnboarding() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            isOnboardingPresented = false
+        }
+        UserDefaults.standard.set(true, forKey: "isa_onboarding_completed")
     }
 
     func dismissHistoryView() {

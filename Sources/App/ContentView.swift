@@ -238,9 +238,17 @@ struct ContentView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
                     .zIndex(150)
             }
+
+            if viewModel.isOnboardingPresented {
+                OnboardingView(viewModel: viewModel)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .zIndex(200)
+            }
         }
         .onExitCommand {
-            if viewModel.isHistoryViewPresented {
+            if viewModel.isOnboardingPresented {
+                viewModel.completeOnboarding()
+            } else if viewModel.isHistoryViewPresented {
                 viewModel.dismissHistoryView()
             } else if viewModel.activeTab.isFindPresented {
                 viewModel.hideFindInPage()
@@ -708,7 +716,7 @@ struct ContentView: View {
                 if tab.isInternal {
                     SettingsView(viewModel: viewModel)
                         .opacity(tab.id == viewModel.selectedTabId ? 1 : 0)
-                        .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isAddressOverlayPresented && !isShieldPopoverPresented && !isDownloadsPopoverPresented && !viewModel.isHistoryViewPresented)
+                        .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isAddressOverlayPresented && !isShieldPopoverPresented && !isDownloadsPopoverPresented && !viewModel.isHistoryViewPresented && !viewModel.isOnboardingPresented)
                 } else if !tab.isNewTabState || tab.webView != nil || tab.isSleeping {
                     TabContentView(
                         tab: tab,
@@ -2927,7 +2935,7 @@ struct TabContentView: View {
             }
         }
         .opacity(tab.id == viewModel.selectedTabId && !tab.isNewTabState ? 1 : 0)
-        .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isNewTabState && !tab.isAddressOverlayPresented && !isShieldPopoverPresented && !isDownloadsPopoverPresented && !viewModel.isHistoryViewPresented)
+        .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isNewTabState && !tab.isAddressOverlayPresented && !isShieldPopoverPresented && !isDownloadsPopoverPresented && !viewModel.isHistoryViewPresented && !viewModel.isOnboardingPresented)
     }
 }
 
