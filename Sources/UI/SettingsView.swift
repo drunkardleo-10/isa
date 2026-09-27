@@ -216,7 +216,7 @@ struct SettingsView: View {
     private var versionTitle: String {
         switch updater.stage {
         case .none:
-            return "isa v1.0.0"
+            return "isa v\(Updater.version)"
         case .fetching(let next):
             return "isa v\(next.version) is downloading…"
         case .ready(let next):
