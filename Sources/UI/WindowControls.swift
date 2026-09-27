@@ -4,11 +4,18 @@ import ObjectiveC
 
 struct WindowAccessor: NSViewRepresentable {
     let theme: AppTheme
+    let transparency: Double
+
+    init(theme: AppTheme, transparency: Double = 0.0) {
+        self.theme = theme
+        self.transparency = transparency
+    }
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
             applyTheme(to: view)
+            setupTranslucency(for: view)
         }
         return view
     }
@@ -16,6 +23,7 @@ struct WindowAccessor: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {
         DispatchQueue.main.async {
             applyTheme(to: nsView)
+            setupTranslucency(for: nsView)
         }
     }
 
@@ -34,6 +42,39 @@ struct WindowAccessor: NSViewRepresentable {
         case .dark:
             window.appearance = NSAppearance(named: .darkAqua)
         }
+    }
+
+    private func setupTranslucency(for view: NSView) {
+        guard let window = view.window else { return }
+        window.isOpaque = false
+        window.backgroundColor = .clear
+
+        let effectIdentifier = NSUserInterfaceItemIdentifier("WindowTranslucencyEffectView")
+        let effectView: NSVisualEffectView
+        if let existing = window.contentView?.superview?.subviews.first(where: { $0.identifier == effectIdentifier }) as? NSVisualEffectView {
+            effectView = existing
+        } else if let existing = window.contentView?.subviews.first(where: { $0.identifier == effectIdentifier }) as? NSVisualEffectView {
+            effectView = existing
+        } else {
+            let vev = NSVisualEffectView()
+            vev.identifier = effectIdentifier
+            vev.material = .underWindowBackground
+            vev.blendingMode = .behindWindow
+            vev.state = .active
+            if let contentView = window.contentView, let superview = contentView.superview {
+                vev.frame = superview.bounds
+                vev.autoresizingMask = [.width, .height]
+                superview.addSubview(vev, positioned: .below, relativeTo: contentView)
+            } else if let contentView = window.contentView {
+                vev.frame = contentView.bounds
+                vev.autoresizingMask = [.width, .height]
+                contentView.addSubview(vev, positioned: .below, relativeTo: nil)
+            }
+            effectView = vev
+        }
+        effectView.material = .underWindowBackground
+        effectView.blendingMode = .behindWindow
+        effectView.state = .active
     }
 
     private func disableWindowDrag(in window: NSWindow) {

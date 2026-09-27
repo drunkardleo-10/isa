@@ -39,7 +39,7 @@ struct SettingsView: View {
         HStack(spacing: 0) {
             sidebarView
                 .frame(width: 205)
-                .background(Color(nsColor: .windowBackgroundColor))
+                .background(Color(nsColor: .windowBackgroundColor).opacity(1.0 - viewModel.windowTransparency))
 
             Rectangle()
                 .fill(Color.primary.opacity(0.08))
@@ -78,7 +78,7 @@ struct SettingsView: View {
                 .opacity(contentAppeared ? 1 : 0)
                 .offset(y: contentAppeared ? 0 : 10)
             }
-            .background(Color(nsColor: .windowBackgroundColor))
+            .background(Color(nsColor: .windowBackgroundColor).opacity(1.0 - viewModel.windowTransparency))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $showClearBrowsingDataSheet) {
@@ -379,6 +379,26 @@ struct SettingsView: View {
                     )
                     .frame(maxWidth: 270)
                 }
+
+                SettingsDivider()
+
+                SettingsRow(
+                    title: "Window transparency",
+                    subtitle: "Adjust the frosted-glass translucency behind the window in real time."
+                ) {
+                    HStack(spacing: 10) {
+                        Slider(
+                            value: $viewModel.windowTransparency,
+                            in: 0.0...1.0
+                        )
+                        .frame(width: 140)
+
+                        Text("\(Int(round(viewModel.windowTransparency * 100)))%")
+                            .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .frame(width: 38, alignment: .trailing)
+                    }
+                }
             }
         }
     }
@@ -421,23 +441,61 @@ struct SettingsView: View {
                     title: "Default search engine",
                     subtitle: "Search engine used when entering queries in the address bar."
                 ) {
-                    Text("Google Search")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.primary)
+                    Menu {
+                        ForEach(SearchEngine.allCases) { engine in
+                            Button(action: {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                    viewModel.searchEngine = engine
+                                }
+                            }) {
+                                HStack {
+                                    Text(engine.displayName)
+                                    if viewModel.searchEngine == engine {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(viewModel.searchEngine.displayName)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.primary)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(.secondary)
+                        }
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+                        .padding(.vertical, 5)
+                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+                        )
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
                 }
 
-                SettingsDivider()
+                if viewModel.searchEngine == .custom {
+                    SettingsDivider()
 
-                SettingsRow(
-                    title: "Internal scheme navigation",
-                    subtitle: "Direct URL navigation for native isa:// internal settings and tools."
-                ) {
-                    Text("isa://")
-                        .font(.system(size: 11.5, weight: .medium, design: .monospaced))
-                        .foregroundColor(.secondary)
+                    SettingsRow(
+                        title: "Custom search URL",
+                        subtitle: "URL query template with %s or %@ as the search term placeholder."
+                    ) {
+                        TextField("https://example.com/search?q=%s", text: $viewModel.customSearchEngineURL)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 11.5, design: .monospaced))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.1), lineWidth: 0.5)
+                            )
+                            .frame(width: 240)
+                    }
                 }
             }
         }

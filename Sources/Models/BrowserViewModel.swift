@@ -63,7 +63,7 @@ final class TabScriptHandler: NSObject, WKScriptMessageHandler {
                 return
             }
             DispatchQueue.main.async {
-                self.tab?.onOpenNewTab?(url)
+                self.tab?.onOpenNewTab?(url, true)
             }
         } else if message.name == "mediaPlaybackState", let dict = message.body as? [String: Any], let isPlaying = dict["isPlaying"] as? Bool {
             DispatchQueue.main.async {
@@ -107,7 +107,7 @@ private final class WebAudioObserver: NSObject {
 
 final class Tab: Identifiable, ObservableObject {
     let id: UUID = UUID()
-    var onOpenNewTab: ((URL) -> Void)?
+    var onOpenNewTab: ((URL, Bool) -> Void)?
     var onLoadingFinished: (() -> Void)?
     @Published var addressText: String = ""
     @Published var currentURL: URL? = nil
@@ -470,6 +470,34 @@ final class BrowserViewModel: ObservableObject {
             UserDefaults.standard.set(theme.rawValue, forKey: "appTheme")
         }
     }
+    @Published var windowTransparency: Double = {
+        if UserDefaults.standard.object(forKey: "windowTransparency") != nil {
+            return UserDefaults.standard.double(forKey: "windowTransparency")
+        }
+        return 0.0
+    }() {
+        didSet {
+            UserDefaults.standard.set(windowTransparency, forKey: "windowTransparency")
+        }
+    }
+    @Published var searchEngine: SearchEngine = {
+        if let saved = UserDefaults.standard.string(forKey: "defaultSearchEngine"),
+           let engine = SearchEngine(rawValue: saved) {
+            return engine
+        }
+        return .google
+    }() {
+        didSet {
+            UserDefaults.standard.set(searchEngine.rawValue, forKey: "defaultSearchEngine")
+        }
+    }
+    @Published var customSearchEngineURL: String = {
+        UserDefaults.standard.string(forKey: "customSearchEngineURL") ?? "https://search.brave.com/search?q=%s"
+    }() {
+        didSet {
+            UserDefaults.standard.set(customSearchEngineURL, forKey: "customSearchEngineURL")
+        }
+    }
     @Published var isBenchmarkRunning: Bool = false
     @Published var isHistoryViewPresented: Bool = false
     @Published var isClearHistoryDialogPresented: Bool = false
@@ -628,8 +656,8 @@ final class BrowserViewModel: ObservableObject {
     func bindTabs() {
         tabCancellables.removeAll()
         for tab in tabs {
-            tab.onOpenNewTab = { [weak self] url in
-                self?.createNewTab(with: url, select: true)
+            tab.onOpenNewTab = { [weak self] url, select in
+                self?.createNewTab(with: url, select: select)
             }
             tab.onLoadingFinished = { [weak self] in
                 if tab.isPinned {
@@ -1021,7 +1049,7 @@ final class BrowserViewModel: ObservableObject {
         guard let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
             return nil
         }
-        return URL(string: "https://www.google.com/search?q=\(encoded)")
+        return searchEngine.searchURL(for: trimmed, customTemplate: customSearchEngineURL)
     }
 
     func isDirectURL(_ input: String) -> Bool {

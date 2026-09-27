@@ -89,13 +89,9 @@ struct FindBarView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color(nsColor: .windowBackgroundColor).opacity(0.92)))
-        )
+        .findBarGlassBackground()
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
         )
         .shadow(color: Color.black.opacity(0.22), radius: 16, x: 0, y: 6)
@@ -103,6 +99,26 @@ struct FindBarView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 isFieldFocused = true
             }
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func findBarGlassBackground() -> some View {
+        if #available(macOS 26.0, *) {
+            self.glassEffect(
+                .regular
+                    .tint(Color.accentColor.opacity(0.05))
+                    .interactive(true),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+        } else {
+            self.background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(nsColor: .windowBackgroundColor).opacity(0.92)))
+            )
         }
     }
 }

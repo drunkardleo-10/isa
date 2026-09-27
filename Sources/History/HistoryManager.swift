@@ -36,11 +36,29 @@ struct HistoryItem: Identifiable, Codable, Equatable {
 }
 
 struct SuggestionItem: Identifiable, Equatable {
-    let id: UUID = UUID()
+    let id: String
     let query: String
     let fullURL: String
     let isRecentSearch: Bool
     var isHistoryVisit: Bool = false
+    var isDirectSearch: Bool = false
+
+    init(query: String, fullURL: String, isRecentSearch: Bool, isHistoryVisit: Bool = false, isDirectSearch: Bool = false) {
+        if isDirectSearch {
+            self.id = "direct_search"
+        } else if isHistoryVisit {
+            self.id = "h:\(fullURL)"
+        } else if isRecentSearch {
+            self.id = "r:\(query)"
+        } else {
+            self.id = "s:\(query)"
+        }
+        self.query = query
+        self.fullURL = fullURL
+        self.isRecentSearch = isRecentSearch
+        self.isHistoryVisit = isHistoryVisit
+        self.isDirectSearch = isDirectSearch
+    }
 
     var displayURL: String {
         if isHistoryVisit, let u = URL(string: fullURL) {
@@ -63,6 +81,7 @@ final class HistoryManager: ObservableObject {
     private let searchHistoryKey = "searchHistory"
     private let browsingHistoryKey = "isa_browsing_history_v1"
     private let maxHistoryItems = 3000
+    private var currentSuggestionTask: URLSessionDataTask? = nil
 
     @Published var historyItems: [HistoryItem] = []
     @Published var searchQueries: [String] = []
@@ -100,8 +119,6 @@ final class HistoryManager: ObservableObject {
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-
-            // Deduplicate rapid consecutive visits to the exact same URL within 15 seconds
             if let first = self.historyItems.first, first.url == urlString,
                abs(first.visitTime.timeIntervalSinceNow) < 15.0 {
                 if self.historyItems[0].title.isEmpty || self.historyItems[0].title == url.host {
@@ -249,11 +266,11 @@ final class HistoryManager: ObservableObject {
         var results: [SuggestionItem] = []
 
         if let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-            let searchURL = "https://www.google.com/search?q=\(encoded)"
-            results.append(SuggestionItem(query: trimmed, fullURL: searchURL, isRecentSearch: false))
+            let customTemplate = UserDefaults.standard.string(forKey: "customSearchEngineURL") ?? ""
+            let searchURL = SearchEngine.current.searchURL(for: trimmed, customTemplate: customTemplate)?.absoluteString ?? "https://www.google.com/search?q=\(encoded)"
+            results.append(SuggestionItem(query: trimmed, fullURL: searchURL, isRecentSearch: false, isDirectSearch: true))
         }
 
-        // Add matching visited pages from browsing history
         var seen = Set<String>()
         seen.insert(trimmed.lowercased())
 
@@ -273,7 +290,8 @@ final class HistoryManager: ObservableObject {
             if pastLower.contains(lower) && !seen.contains(pastLower) {
                 seen.insert(pastLower)
                 if let encoded = pastQuery.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-                    let searchURL = "https://www.google.com/search?q=\(encoded)"
+                    let customTemplate = UserDefaults.standard.string(forKey: "customSearchEngineURL") ?? ""
+                    let searchURL = SearchEngine.current.searchURL(for: pastQuery, customTemplate: customTemplate)?.absoluteString ?? "https://www.google.com/search?q=\(encoded)"
                     results.append(SuggestionItem(query: pastQuery, fullURL: searchURL, isRecentSearch: true))
                 }
             }
@@ -286,6 +304,8 @@ final class HistoryManager: ObservableObject {
     func fetchSuggestions(for query: String, completion: @escaping ([SuggestionItem]) -> Void) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
+            currentSuggestionTask?.cancel()
+            currentSuggestionTask = nil
             completion([])
             return
         }
@@ -298,10 +318,15 @@ final class HistoryManager: ObservableObject {
             return
         }
 
+        currentSuggestionTask?.cancel()
+
         var request = URLRequest(url: url)
         request.timeoutInterval = 2.0
 
-        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+            if let urlError = error as? URLError, urlError.code == .cancelled {
+                return
+            }
             guard let self = self,
                   let data = data, error == nil,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [Any],
@@ -316,13 +341,13 @@ final class HistoryManager: ObservableObject {
             var items: [SuggestionItem] = []
             var seen = Set<String>()
 
-            let directSearchURL = "https://www.google.com/search?q=" + encoded
-            items.append(SuggestionItem(query: trimmed, fullURL: directSearchURL, isRecentSearch: false))
+            let customTemplate = UserDefaults.standard.string(forKey: "customSearchEngineURL") ?? ""
+            let directSearchURL = SearchEngine.current.searchURL(for: trimmed, customTemplate: customTemplate)?.absoluteString ?? ("https://www.google.com/search?q=" + encoded)
+            items.append(SuggestionItem(query: trimmed, fullURL: directSearchURL, isRecentSearch: false, isDirectSearch: true))
             seen.insert(trimmed.lowercased())
 
             let lower = trimmed.lowercased()
 
-            // Include history matches
             for historyItem in self.historyItems {
                 let hLowerTitle = historyItem.title.lowercased()
                 let hLowerURL = historyItem.url.lowercased()
@@ -340,7 +365,8 @@ final class HistoryManager: ObservableObject {
                 if pastLower.contains(lower) && !seen.contains(pastLower) {
                     seen.insert(pastLower)
                     if let sEncoded = pastQuery.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-                        let sURL = "https://www.google.com/search?q=" + sEncoded
+                        let customTemplate = UserDefaults.standard.string(forKey: "customSearchEngineURL") ?? ""
+                        let sURL = SearchEngine.current.searchURL(for: pastQuery, customTemplate: customTemplate)?.absoluteString ?? ("https://www.google.com/search?q=" + sEncoded)
                         items.append(SuggestionItem(query: pastQuery, fullURL: sURL, isRecentSearch: true))
                     }
                 }
@@ -352,7 +378,8 @@ final class HistoryManager: ObservableObject {
                 if !seen.contains(sLower) {
                     seen.insert(sLower)
                     if let sEncoded = suggestion.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-                        let sURL = "https://www.google.com/search?q=" + sEncoded
+                        let customTemplate = UserDefaults.standard.string(forKey: "customSearchEngineURL") ?? ""
+                        let sURL = SearchEngine.current.searchURL(for: suggestion, customTemplate: customTemplate)?.absoluteString ?? ("https://www.google.com/search?q=" + sEncoded)
                         items.append(SuggestionItem(query: suggestion, fullURL: sURL, isRecentSearch: false))
                     }
                 }
@@ -362,6 +389,8 @@ final class HistoryManager: ObservableObject {
             DispatchQueue.main.async {
                 completion(items)
             }
-        }.resume()
+        }
+        currentSuggestionTask = task
+        task.resume()
     }
 }

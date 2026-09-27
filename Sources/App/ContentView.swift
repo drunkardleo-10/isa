@@ -380,8 +380,8 @@ struct ContentView: View {
         .onReceive(downloadManager.objectWillChange) { _ in }
         .onReceive(viewModel.activeTab.objectWillChange) { _ in }
         .ignoresSafeArea(.all, edges: .top)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .background(WindowAccessor(theme: viewModel.theme))
+        .background(Color(nsColor: .windowBackgroundColor).opacity(1.0 - viewModel.windowTransparency))
+        .background(WindowAccessor(theme: viewModel.theme, transparency: viewModel.windowTransparency))
         .background(keyboardShortcutsBackground)
     }
 
@@ -477,7 +477,7 @@ struct ContentView: View {
         }
         .frame(height: 38)
         .padding(.trailing, 12)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color(nsColor: .windowBackgroundColor).opacity(1.0 - viewModel.windowTransparency))
         .background(NonDraggableBackground())
     }
 
@@ -702,7 +702,7 @@ struct ContentView: View {
 
     private var mainContentArea: some View {
         ZStack(alignment: .bottom) {
-            Color(nsColor: .windowBackgroundColor)
+            Color(nsColor: .windowBackgroundColor).opacity(1.0 - viewModel.windowTransparency)
 
             ForEach(viewModel.tabs) { tab in
                 if tab.isInternal {
@@ -743,7 +743,7 @@ struct ContentView: View {
             }
         }
         .frame(width: isSidebarEffectivelyExpanded ? 240 : 48)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color(nsColor: .windowBackgroundColor).opacity(1.0 - viewModel.windowTransparency))
         .background(NonDraggableBackground())
         .clipped()
         .animation(.spring(response: 0.22, dampingFraction: 0.85), value: isSidebarEffectivelyExpanded)
@@ -2221,7 +2221,7 @@ struct ActiveTabOverlayView: View {
 
                         ZStack(alignment: .leading) {
                             if expandProgress < 0.35 && tab.isNewTabState {
-                                Text("Search google or websites.")
+                                Text("Search \(viewModel.searchEngine.displayName) or websites.")
                                     .font(.system(size: 15))
                                     .foregroundColor(.secondary)
                                     .padding(.leading, 42)
@@ -2229,11 +2229,13 @@ struct ActiveTabOverlayView: View {
                             }
 
                             HStack(spacing: 8) {
-                                TextField("Search google or websites.", text: $addressInput)
+                                TextField("Search \(viewModel.searchEngine.displayName) or websites.", text: $addressInput)
                                     .textFieldStyle(.plain)
                                     .font(.system(size: 15))
+                                    .foregroundColor(.primary)
                                     .autocorrectionDisabled(true)
                                     .focused($isFocused)
+                                    .transaction { $0.animation = nil }
                                     .onSubmit {
                                         if selectedSuggestionIndex >= 0 && selectedSuggestionIndex < suggestions.count {
                                             navigateWithSuggestion(suggestions[selectedSuggestionIndex])
@@ -2262,6 +2264,7 @@ struct ActiveTabOverlayView: View {
                             .padding(.horizontal, 16)
                             .opacity(expandProgress >= 0.99 ? 1.0 : Double(max(0, min(1.0, (expandProgress - 0.2) / 0.8))))
                             .allowsHitTesting(expandProgress > 0.5 || !tab.isNewTabState)
+                            .transaction { $0.animation = nil }
                         }
                         .frame(width: max(44, currentPillWidth), height: 44, alignment: .leading)
                         .padding(.leading, pillOffset)
@@ -2314,7 +2317,7 @@ struct ActiveTabOverlayView: View {
                                     .combined(with: .scale(scale: 0.99, anchor: .top))
                             )
                         )
-                        .animation(.spring(response: 0.18, dampingFraction: 0.86), value: suggestions.map { $0.id })
+                        .animation(.spring(response: 0.22, dampingFraction: 0.85), value: suggestions.map { $0.id })
                     } else if tab.isNewTabState {
                         ShortcutsSectionView(
                             viewModel: viewModel,
@@ -2444,20 +2447,27 @@ struct ActiveTabOverlayView: View {
                 let text = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 if text.isEmpty {
                     resetInactivityTimer()
-                    withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
                         suggestions = []
                         selectedSuggestionIndex = -1
                     }
                 } else {
                     inactivityTask?.cancel()
                     let local = HistoryManager.shared.localSuggestions(for: text)
-                    withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
-                        suggestions = local
+                    if suggestions.isEmpty {
+                        withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                            suggestions = local
+                        }
+                    } else if let direct = local.first {
+                        suggestions[0] = direct
                     }
                     HistoryManager.shared.fetchSuggestions(for: text) { remoteItems in
                         if addressInput.trimmingCharacters(in: .whitespacesAndNewlines) == text {
-                            withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
                                 suggestions = remoteItems
+                                if selectedSuggestionIndex >= remoteItems.count {
+                                    selectedSuggestionIndex = -1
+                                }
                             }
                         }
                     }
@@ -2539,18 +2549,14 @@ struct ActiveTabOverlayView: View {
 
     private func syncInput() {
         addressInput = tab.addressText
-        withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
-            suggestions = []
-            selectedSuggestionIndex = -1
-        }
+        suggestions = []
+        selectedSuggestionIndex = -1
     }
 
     private func navigateWithSuggestion(_ item: SuggestionItem) {
         inactivityTask?.cancel()
-        withAnimation(.spring(response: 0.18, dampingFraction: 0.86)) {
-            suggestions = []
-            selectedSuggestionIndex = -1
-        }
+        suggestions = []
+        selectedSuggestionIndex = -1
         if !item.isHistoryVisit {
             HistoryManager.shared.recordSearch(query: item.query)
         }
@@ -2585,11 +2591,14 @@ struct SuggestionRowView: View {
                     .font(.system(size: 12))
                     .foregroundColor(item.isHistoryVisit ? .accentColor : (item.isRecentSearch ? .accentColor : .secondary))
                     .frame(width: 16)
+                    .transaction { $0.animation = nil }
 
                 Text(item.query)
                     .font(.system(size: 13, weight: .regular))
                     .foregroundColor(.primary)
                     .lineLimit(1)
+                    .contentTransition(.identity)
+                    .transaction { $0.animation = nil }
 
                 Spacer()
 
@@ -2602,6 +2611,7 @@ struct SuggestionRowView: View {
                         .background(
                             Capsule().fill(Color.primary.opacity(0.06))
                         )
+                        .transaction { $0.animation = nil }
                 } else if item.isRecentSearch {
                     Text("Search history")
                         .font(.system(size: 10, weight: .medium))
@@ -2611,8 +2621,10 @@ struct SuggestionRowView: View {
                         .background(
                             Capsule().fill(Color.primary.opacity(0.06))
                         )
+                        .transaction { $0.animation = nil }
                 }
             }
+            .transaction { $0.animation = nil }
             .padding(.horizontal, 14)
             .frame(height: 36)
             .background(

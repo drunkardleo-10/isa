@@ -53,8 +53,10 @@ struct WebView: NSViewRepresentable {
             }
             if navigationAction.targetFrame == nil {
                 if let url = navigationAction.request.url, !url.absoluteString.isEmpty {
+                    let isCommand = navigationAction.modifierFlags.contains(.command) || navigationAction.buttonNumber == 2
+                    let shouldFocus = isCommand ? navigationAction.modifierFlags.contains(.shift) : true
                     DispatchQueue.main.async {
-                        self.tab?.onOpenNewTab?(url)
+                        self.tab?.onOpenNewTab?(url, shouldFocus)
                     }
                 }
                 decisionHandler(.cancel)
@@ -62,8 +64,9 @@ struct WebView: NSViewRepresentable {
             }
             if navigationAction.navigationType == .linkActivated && (navigationAction.modifierFlags.contains(.command) || navigationAction.buttonNumber == 2) {
                 if let url = navigationAction.request.url, !url.absoluteString.isEmpty {
+                    let shouldFocus = navigationAction.modifierFlags.contains(.shift)
                     DispatchQueue.main.async {
-                        self.tab?.onOpenNewTab?(url)
+                        self.tab?.onOpenNewTab?(url, shouldFocus)
                     }
                     decisionHandler(.cancel)
                     return
@@ -103,8 +106,10 @@ struct WebView: NSViewRepresentable {
                     PerformanceMonitor.shared.log(event: "Security", details: "Blocked web content popup to internal scheme: \(url.absoluteString)")
                     return nil
                 }
+                let isCommand = navigationAction.modifierFlags.contains(.command) || navigationAction.buttonNumber == 2
+                let shouldFocus = isCommand ? navigationAction.modifierFlags.contains(.shift) : true
                 DispatchQueue.main.async {
-                    self.tab?.onOpenNewTab?(url)
+                    self.tab?.onOpenNewTab?(url, shouldFocus)
                 }
             }
             return nil
