@@ -109,6 +109,26 @@ struct BrowserApp: App {
                     viewModel.resetZoomActiveTab()
                 }
                 .keyboardShortcut("0", modifiers: .command)
+
+                Divider()
+
+                Button("Web Inspector") {
+                    viewModel.toggleInspector()
+                }
+                .keyboardShortcut("i", modifiers: [.command, .option])
+                .disabled(!viewModel.activeTab.canInspect)
+
+                Button("JavaScript Console") {
+                    viewModel.showConsole()
+                }
+                .keyboardShortcut("j", modifiers: [.command, .option])
+                .disabled(!viewModel.activeTab.canInspect)
+
+                Button("Inspect Element") {
+                    viewModel.inspectElement()
+                }
+                .keyboardShortcut("c", modifiers: [.command, .option])
+                .disabled(!viewModel.activeTab.canInspect)
             }
 
             CommandMenu("Find") {

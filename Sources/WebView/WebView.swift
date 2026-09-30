@@ -265,10 +265,21 @@ final class PassthroughHostingView<Content: View>: NSHostingView<Content> {
 }
 
 final class TabContainerView: NSView {
+    private static let docks = NSMapTable<NSView, NSView>.weakToWeakObjects()
     private weak var currentWebView: WKWebView?
     private var imageView: NSImageView?
     private var reloadingLabel: NSTextField?
     private var discHostingView: NSHostingView<SwipeOverlayView>?
+
+    override func layout() {
+        super.layout()
+        if let webView = currentWebView {
+            let docked = InspectorHelper.isInspecting(webView: webView)
+            if !(docked && subviews.contains(where: { InspectorHelper.isInspector($0) })) {
+                webView.frame = bounds
+            }
+        }
+    }
 
     func updatePull(_ pull: Pull?) {
         if let hosting = discHostingView {
@@ -287,7 +298,14 @@ final class TabContainerView: NSView {
     func update(tab: Tab, coordinator: WebView.Coordinator) {
         if let webView = tab.webView {
             if currentWebView !== webView {
-                subviews.forEach { $0.removeFromSuperview() }
+                if let leaving = currentWebView, let dock = subviews.first(where: { InspectorHelper.isInspector($0) }) {
+                    Self.docks.setObject(dock, forKey: leaving)
+                    dock.removeFromSuperview()
+                }
+                let docked = InspectorHelper.isInspecting(webView: webView)
+                for view in subviews where view !== webView && !(docked && InspectorHelper.isInspector(view)) {
+                    view.removeFromSuperview()
+                }
                 currentWebView = webView
                 imageView = nil
                 reloadingLabel = nil
@@ -295,11 +313,25 @@ final class TabContainerView: NSView {
                 webView.navigationDelegate = coordinator
                 webView.uiDelegate = coordinator
                 webView.autoresizingMask = [.width, .height]
-                webView.frame = bounds
-                addSubview(webView)
+                if webView.superview !== self {
+                    webView.removeFromSuperview()
+                    addSubview(webView)
+                    if docked, let dock = Self.docks.object(forKey: webView) {
+                        addSubview(dock, positioned: .below, relativeTo: webView)
+                    }
+                    Self.docks.removeObject(forKey: webView)
+                }
+                if !(docked && subviews.contains(where: { InspectorHelper.isInspector($0) })) {
+                    webView.frame = bounds
+                }
                 (webView as? BrowserWebView)?.onPull = { [weak self, weak tab] pull in
                     tab?.pull = pull
                     self?.updatePull(pull)
+                }
+            } else {
+                let docked = InspectorHelper.isInspecting(webView: webView)
+                if !(docked && subviews.contains(where: { InspectorHelper.isInspector($0) })) {
+                    webView.frame = bounds
                 }
             }
             updatePull(tab.pull)
@@ -309,6 +341,10 @@ final class TabContainerView: NSView {
                 removeReloadingOverlay()
             }
         } else if let snapshot = tab.snapshotImage {
+            if let leaving = currentWebView, let dock = subviews.first(where: { InspectorHelper.isInspector($0) }) {
+                Self.docks.setObject(dock, forKey: leaving)
+                dock.removeFromSuperview()
+            }
             if currentWebView != nil || imageView?.image !== snapshot {
                 subviews.forEach { $0.removeFromSuperview() }
                 currentWebView = nil
@@ -322,6 +358,10 @@ final class TabContainerView: NSView {
                 self.imageView = iv
             }
         } else {
+            if let leaving = currentWebView, let dock = subviews.first(where: { InspectorHelper.isInspector($0) }) {
+                Self.docks.setObject(dock, forKey: leaving)
+                dock.removeFromSuperview()
+            }
             if !subviews.isEmpty {
                 subviews.forEach { $0.removeFromSuperview() }
                 currentWebView = nil

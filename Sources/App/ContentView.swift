@@ -1828,6 +1828,9 @@ struct ContentView: View {
                 }
             }.keyboardShortcut("9", modifiers: .command)
             Button("") { viewModel.closeActiveTab() }.keyboardShortcut("w", modifiers: .command)
+            Button("") { viewModel.toggleInspector() }.keyboardShortcut("i", modifiers: [.command, .option])
+            Button("") { viewModel.showConsole() }.keyboardShortcut("j", modifiers: [.command, .option])
+            Button("") { viewModel.inspectElement() }.keyboardShortcut("c", modifiers: [.command, .option])
         }
         .opacity(0)
         .allowsHitTesting(false)

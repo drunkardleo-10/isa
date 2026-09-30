@@ -31,11 +31,19 @@ final class BrowserWebView: WKWebView {
     override init(frame: CGRect, configuration: WKWebViewConfiguration) {
         super.init(frame: frame, configuration: configuration)
         allowsMagnification = true
+        if #available(macOS 13.3, *) {
+            isInspectable = true
+        }
+        InspectorHelper.enableDeveloperExtras(configuration.preferences)
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         allowsMagnification = true
+        if #available(macOS 13.3, *) {
+            isInspectable = true
+        }
+        InspectorHelper.enableDeveloperExtras(configuration.preferences)
     }
 
     override func smartMagnify(with event: NSEvent) {
@@ -627,6 +635,10 @@ final class Tab: Identifiable, ObservableObject {
         !isNewTabState && !isInternal && currentURL != nil && !(currentURL?.absoluteString.isEmpty ?? true) && currentURL?.absoluteString != "about:blank"
     }
 
+    var canInspect: Bool {
+        !isInternal && !isNewTabState
+    }
+
     static let mediaScriptSource = """
     (function() {
         if (window.__isaMediaWatcherInstalled) return;
@@ -676,13 +688,20 @@ final class Tab: Identifiable, ObservableObject {
         if isInternal {
             PerformanceMonitor.shared.log(event: "Warning", details: "ensureWebView called on internal tab: \(currentURL?.absoluteString ?? "")")
             if let existing = webView { return existing }
-            let newWebView = BrowserWebView(frame: .zero, configuration: WKWebViewConfiguration())
+            let config = WKWebViewConfiguration()
+            InspectorHelper.enableDeveloperExtras(config.preferences)
+            let newWebView = BrowserWebView(frame: .zero, configuration: config)
+            if #available(macOS 13.3, *) {
+                newWebView.isInspectable = true
+            }
+            InspectorHelper.enableDeveloperExtras(newWebView.configuration.preferences)
             self.webView = newWebView
             return newWebView
         }
         if let existing = webView { return existing }
         PerformanceMonitor.shared.log(event: "WebKitInit", details: "Instantiating WKWebView for tab \(id.uuidString.prefix(6)) from [\(caller)]")
         let configuration = WKWebViewConfiguration()
+        InspectorHelper.enableDeveloperExtras(configuration.preferences)
         configuration.processPool = BrowserViewModel.sharedProcessPool
         let preferences = WKWebpagePreferences()
         preferences.preferredContentMode = .desktop
@@ -717,6 +736,10 @@ final class Tab: Identifiable, ObservableObject {
 
         AdBlockController.apply(to: configuration, host: currentURL?.host)
         let newWebView = BrowserWebView(frame: .zero, configuration: configuration)
+        if #available(macOS 13.3, *) {
+            newWebView.isInspectable = true
+        }
+        InspectorHelper.enableDeveloperExtras(newWebView.configuration.preferences)
         newWebView.tab = self
         newWebView.allowsBackForwardNavigationGestures = false
         Swipe.calm(newWebView)
