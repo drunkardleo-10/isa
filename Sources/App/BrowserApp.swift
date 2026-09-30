@@ -197,6 +197,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         Updater.shared.checkIfDue()
+        AdBlockController.shared.updateRulesOnLaunch()
 
         if ProcessInfo.processInfo.arguments.contains("--run-perf-sequence") ||
            ProcessInfo.processInfo.arguments.contains("--open-tabs") ||

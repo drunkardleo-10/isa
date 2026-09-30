@@ -189,64 +189,64 @@ struct ContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-        .overlay(alignment: viewModel.tabPlacement == .top ? .topTrailing : .topLeading) {
-            Color.clear
-
-            if isShieldPopoverPresented {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.10)) {
-                            isShieldPopoverPresented = false
+        .overlay {
+            ZStack(alignment: viewModel.tabPlacement == .top ? .topTrailing : .topLeading) {
+                if isShieldPopoverPresented {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.easeOut(duration: 0.10)) {
+                                isShieldPopoverPresented = false
+                            }
                         }
-                    }
-                    .zIndex(90)
+                        .zIndex(90)
 
-                AdBlockStatusPopover(viewModel: viewModel)
-                    .padding(.top, viewModel.tabPlacement == .top ? 42 : 72)
-                    .padding(.leading, viewModel.tabPlacement == .top ? 0 : 20)
-                    .padding(.trailing, viewModel.tabPlacement == .top ? 12 : 0)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.95, anchor: viewModel.tabPlacement == .top ? .topTrailing : .topLeading).combined(with: .opacity),
-                        removal: .scale(scale: 0.95, anchor: viewModel.tabPlacement == .top ? .topTrailing : .topLeading).combined(with: .opacity)
-                    ))
-                    .zIndex(100)
-            }
+                    AdBlockStatusPopover(viewModel: viewModel)
+                        .padding(.top, viewModel.tabPlacement == .top ? 44 : 72)
+                        .padding(.leading, viewModel.tabPlacement == .top ? 0 : 20)
+                        .padding(.trailing, viewModel.tabPlacement == .top ? (downloadManager.shouldShowTopBarButton ? 44 : 14) : 0)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.95, anchor: viewModel.tabPlacement == .top ? .topTrailing : .topLeading).combined(with: .opacity),
+                            removal: .scale(scale: 0.95, anchor: viewModel.tabPlacement == .top ? .topTrailing : .topLeading).combined(with: .opacity)
+                        ))
+                        .zIndex(100)
+                }
 
-            if isDownloadsPopoverPresented {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.10)) {
-                            isDownloadsPopoverPresented = false
+                if isDownloadsPopoverPresented {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.easeOut(duration: 0.10)) {
+                                isDownloadsPopoverPresented = false
+                            }
                         }
-                    }
-                    .zIndex(90)
+                        .zIndex(90)
 
-                DownloadsPopoverView(downloadManager: downloadManager)
-                    .padding(.top, viewModel.tabPlacement == .top ? 42 : 120)
-                    .padding(.leading, viewModel.tabPlacement == .top ? 0 : 20)
-                    .padding(.trailing, viewModel.tabPlacement == .top ? 12 : 0)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.95, anchor: viewModel.tabPlacement == .top ? .topTrailing : .topLeading).combined(with: .opacity),
-                        removal: .scale(scale: 0.95, anchor: viewModel.tabPlacement == .top ? .topTrailing : .topLeading).combined(with: .opacity)
-                    ))
-                    .zIndex(100)
-            }
+                    DownloadsPopoverView(downloadManager: downloadManager)
+                        .padding(.top, viewModel.tabPlacement == .top ? 44 : 120)
+                        .padding(.leading, viewModel.tabPlacement == .top ? 0 : 20)
+                        .padding(.trailing, viewModel.tabPlacement == .top ? 14 : 0)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.95, anchor: viewModel.tabPlacement == .top ? .topTrailing : .topLeading).combined(with: .opacity),
+                            removal: .scale(scale: 0.95, anchor: viewModel.tabPlacement == .top ? .topTrailing : .topLeading).combined(with: .opacity)
+                        ))
+                        .zIndex(100)
+                }
 
-            if viewModel.isHistoryViewPresented {
-                HistoryView(viewModel: viewModel)
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                    .zIndex(150)
-            }
+                if viewModel.isHistoryViewPresented {
+                    HistoryView(viewModel: viewModel)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                        .zIndex(150)
+                }
 
-            if viewModel.isOnboardingPresented {
-                OnboardingView(viewModel: viewModel)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                    .zIndex(200)
+                if viewModel.isOnboardingPresented {
+                    OnboardingView(viewModel: viewModel)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                        .zIndex(200)
+                }
             }
         }
         .onExitCommand {
