@@ -1,9 +1,9 @@
 {
-  "version": "1.1.0",
-  "build": 1100,
-  "url": "https://github.com/drunkardleo-10/isa/releases/download/v1.1.0/isa.zip",
-  "dmg": "https://github.com/drunkardleo-10/isa/releases/download/v1.1.0/isa.dmg",
-  "sha256": "ad4ec851cccd52beeb718c1545739c42adb766e3e78b146035377719779420e0",
-  "notes": "Native zoom and smart column magnification, interactive onboarding with Safari/WebKit importer, customizable search engines, and trackpad swipe navigation.",
+  "version": "1.2.0",
+  "build": 1200,
+  "url": "https://github.com/drunkardleo-10/isa/releases/download/v1.2.0/isa.zip",
+  "dmg": "https://github.com/drunkardleo-10/isa/releases/download/v1.2.0/isa.dmg",
+  "sha256": "961f32966146045a4d9b232c9918dff0b498ba26475dce8802f1d8fa2b01a793",
+  "notes": "Native WebKit Web Inspector DevTools integration (Web Inspector with ⌥⌘I, JavaScript Console with ⌥⌘J, Inspect Element with ⌥⌘C and context menu), docked inspector preservation across tab switches, and stability improvements.",
   "minimumSystemVersion": "14.0"
 }
