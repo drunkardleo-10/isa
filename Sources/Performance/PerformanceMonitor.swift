@@ -285,15 +285,13 @@ final class PerformanceMonitor {
     func log(event: String, details: String? = nil) {
         guard isEnabled else { return }
         let t = currentTelemetry()
-        let footStr = String(format: "%.1f MB (Host: %.1f MB, WebKit: %.1f MB [%d procs])",
-                             t.totalPhysicalFootprintMB, t.hostFootprintMB, t.webKitFootprintMB, t.children.count)
-        let legacyRssStr = String(format: "%.1f MB", t.legacyRssSumMB)
-        let gpuStr = gpuUtilization.map { "\(Int($0))%" } ?? "N/A"
+        let ramStr = String(format: "%.1f MB", t.totalPhysicalFootprintMB)
+        let gpuStr = gpuUtilization.map { "\(Int($0))%" } ?? "0%"
 
         if let details = details {
-            print("[isa] [\(event)] \(details) | Physical Footprint: \(footStr) | RSS (double-counted): \(legacyRssStr) | GPU: \(gpuStr)")
+            print("[isa] [\(event)] \(details) | RAM: \(ramStr) | GPU: \(gpuStr)")
         } else {
-            print("[isa] [\(event)] Physical Footprint: \(footStr) | RSS (double-counted): \(legacyRssStr) | GPU: \(gpuStr)")
+            print("[isa] [\(event)] RAM: \(ramStr) | GPU: \(gpuStr)")
         }
     }
 

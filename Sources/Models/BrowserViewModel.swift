@@ -1000,7 +1000,7 @@ final class BrowserViewModel: ObservableObject {
             let total = self.tabs.count
             let live = self.tabs.filter { $0.webView != nil }.count
             let sleeping = self.tabs.filter { $0.isSleeping }.count
-            return "Tabs: \(total) (Live: \(live), Sleeping: \(sleeping))"
+            return "Tabs: \(total) (\(live) live, \(sleeping) sleeping)"
         }
         PerformanceMonitor.shared.log(event: "Launch", details: "Initial tab created (theme: \(theme.rawValue))")
 
