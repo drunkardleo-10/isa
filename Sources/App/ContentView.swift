@@ -90,63 +90,66 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            if viewModel.tabPlacement == .top {
-                VStack(spacing: 0) {
-                    topBar
-                        .onHover { hovering in
-                            isHoveringTopBar = hovering
-                            if hovering {
-                                zenIdleTimer?.cancel()
-                                zenIdleTimer = nil
-                                if isZenBarHidden {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                        isZenBarHidden = false
+            Group {
+                if viewModel.tabPlacement == .top {
+                    VStack(spacing: 0) {
+                        topBar
+                            .onHover { hovering in
+                                isHoveringTopBar = hovering
+                                if hovering {
+                                    zenIdleTimer?.cancel()
+                                    zenIdleTimer = nil
+                                    if isZenBarHidden {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                            isZenBarHidden = false
+                                        }
                                     }
+                                } else {
+                                    startZenTimer()
                                 }
-                            } else {
-                                startZenTimer()
                             }
-                        }
-                        .frame(height: (viewModel.isZenModeEnabled && isZenBarHidden) ? 0 : 38)
-                        .opacity((viewModel.isZenModeEnabled && isZenBarHidden) ? 0 : 1)
-                        .offset(y: (viewModel.isZenModeEnabled && isZenBarHidden) ? -38 : 0)
-                        .clipped()
-                        .zIndex(10)
+                            .frame(height: (viewModel.isZenModeEnabled && isZenBarHidden) ? 0 : 38)
+                            .opacity((viewModel.isZenModeEnabled && isZenBarHidden) ? 0 : 1)
+                            .offset(y: (viewModel.isZenModeEnabled && isZenBarHidden) ? -38 : 0)
+                            .clipped()
+                            .zIndex(10)
 
-                    mainContentArea
-                }
-            } else {
-                HStack(spacing: 0) {
-                    leftTabSidebar
-                        .onHover { hovering in
-                            isHoveringSidebar = hovering
-                            if hovering {
-                                zenIdleTimer?.cancel()
-                                zenIdleTimer = nil
-                                if isZenBarHidden {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                        isZenBarHidden = false
+                        mainContentArea
+                    }
+                } else {
+                    HStack(spacing: 0) {
+                        leftTabSidebar
+                            .onHover { hovering in
+                                isHoveringSidebar = hovering
+                                if hovering {
+                                    zenIdleTimer?.cancel()
+                                    zenIdleTimer = nil
+                                    if isZenBarHidden {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                            isZenBarHidden = false
+                                        }
                                     }
+                                } else {
+                                    startZenTimer()
                                 }
-                            } else {
-                                startZenTimer()
                             }
-                        }
-                        .frame(width: (viewModel.isZenModeEnabled && isZenBarHidden) ? 0 : (viewModel.isSidebarCollapsed ? 48 : 240))
-                        .opacity((viewModel.isZenModeEnabled && isZenBarHidden) ? 0 : 1)
-                        .offset(x: (viewModel.isZenModeEnabled && isZenBarHidden) ? -(viewModel.isSidebarCollapsed ? 48 : 240) : 0)
-                        .clipped()
-                        .zIndex(10)
-                        .animation(.spring(response: 0.24, dampingFraction: 0.85), value: viewModel.isSidebarCollapsed)
+                            .frame(width: (viewModel.isZenModeEnabled && isZenBarHidden) ? 0 : (viewModel.isSidebarCollapsed ? 48 : 240))
+                            .opacity((viewModel.isZenModeEnabled && isZenBarHidden) ? 0 : 1)
+                            .offset(x: (viewModel.isZenModeEnabled && isZenBarHidden) ? -(viewModel.isSidebarCollapsed ? 48 : 240) : 0)
+                            .clipped()
+                            .zIndex(10)
+                            .animation(.spring(response: 0.24, dampingFraction: 0.85), value: viewModel.isSidebarCollapsed)
 
-                    Rectangle()
-                        .fill(Color.primary.opacity(0.08))
-                        .frame(width: (viewModel.isZenModeEnabled && isZenBarHidden) ? 0 : 1)
-                        .opacity((viewModel.isZenModeEnabled && isZenBarHidden) ? 0 : 1)
+                        Rectangle()
+                            .fill(Color.primary.opacity(0.08))
+                            .frame(width: (viewModel.isZenModeEnabled && isZenBarHidden) ? 0 : 1)
+                            .opacity((viewModel.isZenModeEnabled && isZenBarHidden) ? 0 : 1)
 
-                    mainContentArea
+                        mainContentArea
+                    }
                 }
             }
+            .opacity(viewModel.isOnboardingPresented ? 0 : 1)
 
             if viewModel.isZenModeEnabled && isZenBarHidden {
                 if viewModel.tabPlacement == .top {
@@ -241,7 +244,8 @@ struct ContentView: View {
 
             if viewModel.isOnboardingPresented {
                 OnboardingView(viewModel: viewModel)
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
                     .zIndex(200)
             }
         }
@@ -782,19 +786,14 @@ struct ContentView: View {
                         collapsedTabIconRow(for: tab)
                     }
                     if !viewModel.pinnedTabs.isEmpty && !viewModel.unpinnedTabs.isEmpty {
-                        Divider()
-                            .opacity(0.12)
-                            .padding(.horizontal, 8)
+                        Rectangle()
+                            .fill(Color.primary.opacity(0.12))
+                            .frame(width: 20, height: 1)
                             .padding(.vertical, 2)
                     }
                     ForEach(viewModel.unpinnedTabs) { tab in
                         collapsedTabIconRow(for: tab)
                     }
-
-                    Divider()
-                        .opacity(0.12)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
 
                     Button(action: {
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
@@ -2165,7 +2164,7 @@ struct ActiveTabOverlayView: View {
     }
 
     private var currentPillWidth: CGFloat {
-        260.0 + 168.0 * expandProgress
+        320.0 + 108.0 * expandProgress
     }
 
     private var containerWidth: CGFloat {
@@ -2225,18 +2224,22 @@ struct ActiveTabOverlayView: View {
 
                         ZStack(alignment: .leading) {
                             if expandProgress < 0.35 && tab.isNewTabState {
-                                Text("Search \(viewModel.searchEngine.displayName) or websites.")
+                                Text("Search \(viewModel.searchEngine.displayName) or URL")
                                     .font(.system(size: 15))
                                     .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
                                     .padding(.leading, 42)
+                                    .padding(.trailing, 16)
                                     .opacity(Double(1.0 - expandProgress / 0.35))
                             }
 
                             HStack(spacing: 8) {
-                                TextField("Search \(viewModel.searchEngine.displayName) or websites.", text: $addressInput)
+                                TextField("Search \(viewModel.searchEngine.displayName) or URL", text: $addressInput)
                                     .textFieldStyle(.plain)
                                     .font(.system(size: 15))
                                     .foregroundColor(.primary)
+                                    .lineLimit(1)
                                     .autocorrectionDisabled(true)
                                     .focused($isFocused)
                                     .transaction { $0.animation = nil }
