@@ -5,10 +5,12 @@ import ObjectiveC
 struct WindowAccessor: NSViewRepresentable {
     let theme: AppTheme
     let transparency: Double
+    var isTrafficLightsHidden: Bool = false
 
-    init(theme: AppTheme, transparency: Double = 0.0) {
+    init(theme: AppTheme, transparency: Double = 0.0, isTrafficLightsHidden: Bool = false) {
         self.theme = theme
         self.transparency = transparency
+        self.isTrafficLightsHidden = isTrafficLightsHidden
     }
 
     func makeNSView(context: Context) -> NSView {
@@ -32,6 +34,7 @@ struct WindowAccessor: NSViewRepresentable {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = false
+        window.standardWindowButton(.closeButton)?.superview?.isHidden = isTrafficLightsHidden
         disableWindowDrag(in: window)
         window.makeKeyAndOrderFront(nil)
         switch theme {

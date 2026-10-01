@@ -152,29 +152,31 @@ struct ContentView: View {
             .opacity(viewModel.isOnboardingPresented ? 0 : 1)
 
             if viewModel.isZenModeEnabled && isZenBarHidden {
-                if viewModel.tabPlacement == .top {
-                    Color.clear
-                        .frame(height: 16)
-                        .contentShape(Rectangle())
-                        .onHover { hovering in
-                            isHoveringTopTriggerZone = hovering
-                            if hovering {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    isZenBarHidden = false
-                                }
-                            } else {
-                                startZenTimer()
+                Color.clear
+                    .frame(height: 20)
+                    .contentShape(Rectangle())
+                    .onHover { hovering in
+                        isHoveringTopTriggerZone = hovering
+                        if hovering {
+                            setTrafficLightsHidden(false)
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                isZenBarHidden = false
                             }
+                        } else {
+                            startZenTimer()
                         }
-                        .zIndex(100)
-                } else {
+                    }
+                    .zIndex(100)
+
+                if viewModel.tabPlacement == .left {
                     HStack(spacing: 0) {
                         Color.clear
-                            .frame(width: 16)
+                            .frame(width: 20)
                             .contentShape(Rectangle())
                             .onHover { hovering in
                                 isHoveringLeftTriggerZone = hovering
                                 if hovering {
+                                    setTrafficLightsHidden(false)
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                         isZenBarHidden = false
                                     }
@@ -311,26 +313,22 @@ struct ContentView: View {
                     let location = event.locationInWindow
                     let windowHeight = window.frame.height
 
-                    if viewModel.tabPlacement == .top {
-                        if location.y >= windowHeight - 20 {
-                            if isZenBarHidden {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    isZenBarHidden = false
-                                }
+                    if location.y >= windowHeight - 20 {
+                        if isZenBarHidden {
+                            setTrafficLightsHidden(false)
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                isZenBarHidden = false
                             }
-                        } else if !isHoveringTopBar {
-                            startZenTimer()
                         }
-                    } else {
-                        if location.x <= 20 {
-                            if isZenBarHidden {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    isZenBarHidden = false
-                                }
+                    } else if viewModel.tabPlacement == .left && location.x <= 20 {
+                        if isZenBarHidden {
+                            setTrafficLightsHidden(false)
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                isZenBarHidden = false
                             }
-                        } else if !isHoveringSidebar {
-                            startZenTimer()
                         }
+                    } else if !isHoveringTopBar && !isHoveringSidebar {
+                        startZenTimer()
                     }
                     return event
                 }
@@ -348,17 +346,22 @@ struct ContentView: View {
             }
             zenIdleTimer?.cancel()
             zenIdleTimer = nil
+            setTrafficLightsHidden(false)
         }
         .onChange(of: viewModel.isZenModeEnabled) { enabled in
             if !enabled {
                 zenIdleTimer?.cancel()
                 zenIdleTimer = nil
+                setTrafficLightsHidden(false)
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     isZenBarHidden = false
                 }
             } else {
                 startZenTimer()
             }
+        }
+        .onChange(of: isZenBarHidden) { hidden in
+            setTrafficLightsHidden(viewModel.isZenModeEnabled && hidden)
         }
         .onChange(of: viewModel.tabPlacement) { _ in
             zenIdleTimer?.cancel()
@@ -393,7 +396,7 @@ struct ContentView: View {
         .onReceive(viewModel.activeTab.objectWillChange) { _ in }
         .ignoresSafeArea(.all, edges: .top)
         .background(Color(nsColor: .windowBackgroundColor).opacity(1.0 - viewModel.windowTransparency))
-        .background(WindowAccessor(theme: viewModel.theme, transparency: viewModel.windowTransparency))
+        .background(WindowAccessor(theme: viewModel.theme, transparency: viewModel.windowTransparency, isTrafficLightsHidden: viewModel.isZenModeEnabled && isZenBarHidden))
         .background(keyboardShortcutsBackground)
     }
 
@@ -1761,11 +1764,18 @@ struct ContentView: View {
             await MainActor.run {
                 zenIdleTimer = nil
                 if shouldHideZenBar {
+                    setTrafficLightsHidden(true)
                     withAnimation(.spring(response: 0.42, dampingFraction: 0.85)) {
                         isZenBarHidden = true
                     }
                 }
             }
+        }
+    }
+
+    private func setTrafficLightsHidden(_ hidden: Bool) {
+        for window in NSApp.windows {
+            window.standardWindowButton(.closeButton)?.superview?.isHidden = hidden
         }
     }
 
