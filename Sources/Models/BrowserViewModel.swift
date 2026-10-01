@@ -409,7 +409,10 @@ final class Tab: Identifiable, ObservableObject {
     @Published var pageError: PageErrorInfo? = nil
     @Published var pull: Pull? = nil
     static let defaultZoom: CGFloat = 1.0
+    static let zoomLevels: [CGFloat] = [0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
     @Published var zoom: CGFloat = 1.0
+    @Published var isZoomHUDVisible: Bool = false
+    private var zoomHUDTask: Task<Void, Never>?
 
     @Published var webView: WKWebView? = nil {
         didSet {
@@ -486,22 +489,61 @@ final class Tab: Identifiable, ObservableObject {
         zoom = kept
     }
 
-    func magnify(to value: CGFloat) {
+    func triggerZoomHUD() {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            isZoomHUDVisible = true
+        }
+        zoomHUDTask?.cancel()
+        zoomHUDTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_800_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.spring(response: 0.30, dampingFraction: 0.88)) {
+                self.isZoomHUDVisible = false
+            }
+        }
+    }
+
+    func cancelZoomHUDDismiss() {
+        zoomHUDTask?.cancel()
+        zoomHUDTask = nil
+    }
+
+    func magnify(to value: CGFloat, showHUD: Bool = true) {
         let wanted = min(3.0, max(0.4, value))
         guard let wv = webView else { return }
-        guard abs(wanted - wv.pageZoom) > 0.004 else { return }
+        guard abs(wanted - wv.pageZoom) > 0.004 else {
+            if showHUD {
+                triggerZoomHUD()
+            }
+            return
+        }
         wv.pageZoom = wanted
         zoom = wanted
         rememberZoom()
+        if showHUD {
+            triggerZoomHUD()
+        }
     }
 
     func magnify(by factor: CGFloat) {
         let current = webView?.pageZoom ?? zoom
-        magnify(to: current * factor)
+        magnify(to: current * factor, showHUD: true)
+    }
+
+    func zoomIn() {
+        let current = webView?.pageZoom ?? zoom
+        let target = Tab.zoomLevels.first(where: { $0 > current + 0.01 }) ?? min(3.0, current + 0.25)
+        magnify(to: target, showHUD: true)
+    }
+
+    func zoomOut() {
+        let current = webView?.pageZoom ?? zoom
+        let target = Tab.zoomLevels.last(where: { $0 < current - 0.01 }) ?? max(0.4, current - 0.25)
+        magnify(to: target, showHUD: true)
     }
 
     func resetZoom() {
-        magnify(to: Tab.defaultZoom)
+        magnify(to: Tab.defaultZoom, showHUD: true)
         guard let wv = webView, wv.magnification != 1 else { return }
         wv.magnification = 1
     }
@@ -1508,11 +1550,11 @@ final class BrowserViewModel: ObservableObject {
     }
 
     func zoomInActiveTab() {
-        activeTab.magnify(by: 1.1)
+        activeTab.zoomIn()
     }
 
     func zoomOutActiveTab() {
-        activeTab.magnify(by: 1 / 1.1)
+        activeTab.zoomOut()
     }
 
     func resetZoomActiveTab() {

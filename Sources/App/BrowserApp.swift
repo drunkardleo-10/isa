@@ -100,6 +100,11 @@ struct BrowserApp: App {
                 }
                 .keyboardShortcut("+", modifiers: .command)
 
+                Button("Zoom In (Equals)") {
+                    viewModel.zoomInActiveTab()
+                }
+                .keyboardShortcut("=", modifiers: .command)
+
                 Button("Zoom Out") {
                     viewModel.zoomOutActiveTab()
                 }

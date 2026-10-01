@@ -152,23 +152,42 @@ struct ContentView: View {
             .opacity(viewModel.isOnboardingPresented ? 0 : 1)
 
             if viewModel.isZenModeEnabled && isZenBarHidden {
-                Color.clear
-                    .frame(height: 20)
-                    .contentShape(Rectangle())
-                    .onHover { hovering in
-                        isHoveringTopTriggerZone = hovering
-                        if hovering {
-                            setTrafficLightsHidden(false)
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                isZenBarHidden = false
+                if viewModel.tabPlacement == .top {
+                    Color.clear
+                        .frame(height: 20)
+                        .contentShape(Rectangle())
+                        .onHover { hovering in
+                            isHoveringTopTriggerZone = hovering
+                            if hovering {
+                                setTrafficLightsHidden(false)
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    isZenBarHidden = false
+                                }
+                            } else {
+                                startZenTimer()
                             }
-                        } else {
-                            startZenTimer()
                         }
+                        .zIndex(100)
+                } else {
+                    HStack(spacing: 0) {
+                        Color.clear
+                            .frame(width: 80, height: 28)
+                            .contentShape(Rectangle())
+                            .onHover { hovering in
+                                isHoveringTopTriggerZone = hovering
+                                if hovering {
+                                    setTrafficLightsHidden(false)
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                        isZenBarHidden = false
+                                    }
+                                } else {
+                                    startZenTimer()
+                                }
+                            }
+                        Spacer()
                     }
                     .zIndex(100)
 
-                if viewModel.tabPlacement == .left {
                     HStack(spacing: 0) {
                         Color.clear
                             .frame(width: 20)
@@ -303,6 +322,20 @@ struct ContentView: View {
                         }
                         return nil
                     }
+                    if isCmd {
+                        if chars == "=" || chars == "+" || event.keyCode == 24 || event.keyCode == 69 {
+                            viewModel.zoomInActiveTab()
+                            return nil
+                        }
+                        if chars == "-" || chars == "_" || event.keyCode == 27 || event.keyCode == 78 {
+                            viewModel.zoomOutActiveTab()
+                            return nil
+                        }
+                        if chars == "0" || event.keyCode == 29 || event.keyCode == 82 {
+                            viewModel.resetZoomActiveTab()
+                            return nil
+                        }
+                    }
                     return event
                 }
             }
@@ -313,22 +346,28 @@ struct ContentView: View {
                     let location = event.locationInWindow
                     let windowHeight = window.frame.height
 
-                    if location.y >= windowHeight - 20 {
-                        if isZenBarHidden {
-                            setTrafficLightsHidden(false)
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                isZenBarHidden = false
+                    if viewModel.tabPlacement == .top {
+                        if location.y >= windowHeight - 20 {
+                            if isZenBarHidden {
+                                setTrafficLightsHidden(false)
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    isZenBarHidden = false
+                                }
                             }
+                        } else if !isHoveringTopBar {
+                            startZenTimer()
                         }
-                    } else if viewModel.tabPlacement == .left && location.x <= 20 {
-                        if isZenBarHidden {
-                            setTrafficLightsHidden(false)
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                isZenBarHidden = false
+                    } else {
+                        if (location.x <= 80 && location.y >= windowHeight - 28) || location.x <= 20 {
+                            if isZenBarHidden {
+                                setTrafficLightsHidden(false)
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    isZenBarHidden = false
+                                }
                             }
+                        } else if !isHoveringSidebar {
+                            startZenTimer()
                         }
-                    } else if !isHoveringTopBar && !isHoveringSidebar {
-                        startZenTimer()
                     }
                     return event
                 }
@@ -408,6 +447,31 @@ struct ContentView: View {
             navigationBar
 
             tabStripView
+
+            if abs(viewModel.activeTab.zoom - Tab.defaultZoom) > 0.01 {
+                Button(action: {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        viewModel.activeTab.triggerZoomHUD()
+                    }
+                }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("\(Int(round(viewModel.activeTab.zoom * 100)))%")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.primary.opacity(0.08))
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Zoom level: \(Int(round(viewModel.activeTab.zoom * 100)))% (⌘0 to reset)")
+            }
 
             Button(action: {
                 PerformanceMonitor.shared.log(event: "Click", details: "AdBlock shield popover toggle")
@@ -737,6 +801,27 @@ struct ContentView: View {
             ActiveTabOverlayView(tab: viewModel.activeTab, viewModel: viewModel)
 
             FindBarOverlay(tab: viewModel.activeTab)
+
+            VStack {
+                HStack {
+                    Spacer()
+                    if viewModel.activeTab.isZoomHUDVisible {
+                        ZoomHUDView(tab: viewModel.activeTab, viewModel: viewModel)
+                            .padding(.top, 14)
+                            .padding(.trailing, 18)
+                            .transition(.asymmetric(
+                                insertion: .scale(scale: 0.90, anchor: .topTrailing)
+                                    .combined(with: .opacity)
+                                    .combined(with: .offset(y: -6)),
+                                removal: .scale(scale: 0.94, anchor: .topTrailing)
+                                    .combined(with: .opacity)
+                                    .combined(with: .offset(y: -4))
+                            ))
+                    }
+                }
+                Spacer()
+            }
+            .animation(.spring(response: 0.32, dampingFraction: 0.82), value: viewModel.activeTab.isZoomHUDVisible)
         }
     }
 
@@ -998,6 +1083,27 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                     .disabled(viewModel.activeTab.isNewTabState || viewModel.activeTab.isInternal)
                     .help("Reload (⌘R)")
+
+                    if abs(viewModel.activeTab.zoom - Tab.defaultZoom) > 0.01 {
+                        Button(action: {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                viewModel.activeTab.triggerZoomHUD()
+                            }
+                        }) {
+                            Text("\(Int(round(viewModel.activeTab.zoom * 100)))%")
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 3)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                        .fill(Color.primary.opacity(0.08))
+                                )
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Zoom level: \(Int(round(viewModel.activeTab.zoom * 100)))% (⌘0 to reset)")
+                    }
                 }
                 .offset(x: isSidebarEffectivelyExpanded ? 0 : -20)
                 .opacity(isSidebarEffectivelyExpanded ? 1 : 0)
@@ -1841,6 +1947,10 @@ struct ContentView: View {
             Button("") { viewModel.toggleInspector() }.keyboardShortcut("i", modifiers: [.command, .option])
             Button("") { viewModel.showConsole() }.keyboardShortcut("j", modifiers: [.command, .option])
             Button("") { viewModel.inspectElement() }.keyboardShortcut("c", modifiers: [.command, .option])
+            Button("") { viewModel.zoomInActiveTab() }.keyboardShortcut("=", modifiers: .command)
+            Button("") { viewModel.zoomInActiveTab() }.keyboardShortcut("+", modifiers: .command)
+            Button("") { viewModel.zoomOutActiveTab() }.keyboardShortcut("-", modifiers: .command)
+            Button("") { viewModel.resetZoomActiveTab() }.keyboardShortcut("0", modifiers: .command)
         }
         .opacity(0)
         .allowsHitTesting(false)
@@ -2952,6 +3062,141 @@ struct TabContentView: View {
         }
         .opacity(tab.id == viewModel.selectedTabId && !tab.isNewTabState ? 1 : 0)
         .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isNewTabState && !tab.isAddressOverlayPresented && !isShieldPopoverPresented && !isDownloadsPopoverPresented && !viewModel.isHistoryViewPresented && !viewModel.isOnboardingPresented)
+    }
+}
+
+struct ZoomHUDView: View {
+    @ObservedObject var tab: Tab
+    @ObservedObject var viewModel: BrowserViewModel
+    @State private var isHoveringMinus: Bool = false
+    @State private var isHoveringPlus: Bool = false
+    @State private var isHoveringReset: Bool = false
+    @State private var isHoveringHUD: Bool = false
+    @State private var pulseScale: CGFloat = 1.0
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Button(action: {
+                withAnimation(.spring(response: 0.22, dampingFraction: 0.75)) {
+                    pulseScale = 0.96
+                }
+                tab.zoomOut()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                        pulseScale = 1.0
+                    }
+                }
+            }) {
+                Image(systemName: "minus")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.primary.opacity(tab.zoom <= 0.5 ? 0.3 : 0.85))
+                    .frame(width: 24, height: 24)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(isHoveringMinus ? Color.primary.opacity(0.08) : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(tab.zoom <= 0.5)
+            .help("Zoom out (⌘-)")
+            .onHover { isHoveringMinus = $0 }
+
+            Button(action: {
+                withAnimation(.spring(response: 0.24, dampingFraction: 0.78)) {
+                    pulseScale = 1.04
+                }
+                tab.resetZoom()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                        pulseScale = 1.0
+                    }
+                }
+            }) {
+                Text("\(Int(round(tab.zoom * 100)))%")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(tab.zoom)))
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 4)
+                    .frame(minWidth: 40)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Reset zoom to 100% (⌘0)")
+
+            Button(action: {
+                withAnimation(.spring(response: 0.22, dampingFraction: 0.75)) {
+                    pulseScale = 1.04
+                }
+                tab.zoomIn()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                        pulseScale = 1.0
+                    }
+                }
+            }) {
+                Image(systemName: "plus")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.primary.opacity(tab.zoom >= 3.0 ? 0.3 : 0.85))
+                    .frame(width: 24, height: 24)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(isHoveringPlus ? Color.primary.opacity(0.08) : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(tab.zoom >= 3.0)
+            .help("Zoom in (⌘+)")
+            .onHover { isHoveringPlus = $0 }
+
+            if abs(tab.zoom - Tab.defaultZoom) > 0.01 {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.10))
+                    .frame(width: 1, height: 14)
+                    .padding(.horizontal, 2)
+
+                Button(action: {
+                    tab.resetZoom()
+                }) {
+                    Text("Reset")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundColor(.accentColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(isHoveringReset ? Color.accentColor.opacity(0.12) : Color.clear)
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Reset to 100% (⌘0)")
+                .onHover { isHoveringReset = $0 }
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .shadow(color: Color.black.opacity(0.14), radius: 10, x: 0, y: 4)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.primary.opacity(0.09), lineWidth: 0.75)
+                )
+        )
+        .scaleEffect(pulseScale)
+        .animation(.spring(response: 0.26, dampingFraction: 0.82), value: tab.zoom)
+        .onHover { hovering in
+            isHoveringHUD = hovering
+            if hovering {
+                tab.cancelZoomHUDDismiss()
+            } else {
+                tab.triggerZoomHUD()
+            }
+        }
     }
 }
 
