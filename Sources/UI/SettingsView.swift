@@ -678,11 +678,12 @@ struct SettingsView: View {
                 }
 
                 if !downloadManager.items.isEmpty {
-                    SettingsActionPill(title: "Clear List", systemImage: "trash") {
+                    AnimatedDeleteButton(size: 34, onConfirm: {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
                             downloadManager.clearFinished()
                         }
-                    }
+                    })
+                    .help("Clear finished downloads")
                 }
             }
             .padding(.horizontal, 4)
@@ -761,22 +762,12 @@ private struct SettingsHistoryRowView: View {
                     .font(.system(size: 11))
                     .foregroundColor(.secondary.opacity(0.8))
 
-                Button(action: {
+                AnimatedDeleteButton(size: 22, onConfirm: {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.7)) {
                         onDelete()
                     }
-                }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8.5, weight: .bold))
-                        .foregroundColor(.secondary)
-                        .frame(width: 18, height: 18)
-                        .background(
-                            Circle().fill(Color.primary.opacity(isHovered ? 0.08 : 0))
-                        )
-                }
-                .buttonStyle(SettingsPressableButtonStyle(pressedScale: 0.85))
+                })
                 .opacity(isHovered ? 1.0 : 0.0)
-                .scaleEffect(isHovered ? 1.0 : 0.8)
                 .animation(.spring(response: 0.22, dampingFraction: 0.7), value: isHovered)
                 .help("Delete from history")
             }
@@ -846,9 +837,12 @@ private struct SettingsDownloadRowView: View {
     }()
 
     private var fileIcon: NSImage {
-        let ext = (item.suggestedFilename as NSString).pathExtension
+        let name = item.displayName
+        let ext = (name as NSString).pathExtension
         let icon: NSImage
-        if let utType = UTType(filenameExtension: ext) {
+        if let url = item.destinationURL, FileManager.default.fileExists(atPath: url.path) {
+            icon = NSWorkspace.shared.icon(forFile: url.path)
+        } else if !ext.isEmpty, let utType = UTType(filenameExtension: ext) {
             icon = NSWorkspace.shared.icon(for: utType)
         } else {
             icon = NSWorkspace.shared.icon(for: .data)
@@ -896,7 +890,7 @@ private struct SettingsDownloadRowView: View {
                 .frame(width: 28, height: 28)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.suggestedFilename)
+                Text(item.displayName)
                     .font(.system(size: 12.5, weight: .medium))
                     .foregroundColor(.primary)
                     .lineLimit(1)
@@ -972,37 +966,17 @@ private struct SettingsDownloadRowView: View {
                         .help("Open File")
                     }
 
-                    Button(action: onRemove) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 8.5, weight: .bold))
-                            .foregroundColor(.secondary)
-                            .frame(width: 18, height: 18)
-                            .background(
-                                Circle().fill(Color.primary.opacity(isHovered ? 0.08 : 0))
-                            )
-                    }
-                    .buttonStyle(SettingsPressableButtonStyle(pressedScale: 0.85))
-                    .opacity(isHovered ? 1.0 : 0.0)
-                    .scaleEffect(isHovered ? 1.0 : 0.8)
-                    .animation(.spring(response: 0.22, dampingFraction: 0.7), value: isHovered)
-                    .help("Remove from list")
+                    AnimatedDeleteButton(size: 30, onConfirm: onRemove)
+                        .opacity(isHovered ? 1.0 : 0.0)
+                        .animation(.spring(response: 0.22, dampingFraction: 0.7), value: isHovered)
+                        .help("Remove from list")
                 }
 
             case .failed, .cancelled:
-                Button(action: onRemove) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8.5, weight: .bold))
-                        .foregroundColor(.secondary)
-                        .frame(width: 18, height: 18)
-                        .background(
-                            Circle().fill(Color.primary.opacity(isHovered ? 0.08 : 0))
-                        )
-                }
-                .buttonStyle(SettingsPressableButtonStyle(pressedScale: 0.85))
-                .opacity(isHovered ? 1.0 : 0.0)
-                .scaleEffect(isHovered ? 1.0 : 0.8)
-                .animation(.spring(response: 0.22, dampingFraction: 0.7), value: isHovered)
-                .help("Remove from list")
+                AnimatedDeleteButton(size: 30, onConfirm: onRemove)
+                    .opacity(isHovered ? 1.0 : 0.0)
+                    .animation(.spring(response: 0.22, dampingFraction: 0.7), value: isHovered)
+                    .help("Remove from list")
             }
         }
         .padding(.horizontal, 14)

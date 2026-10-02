@@ -14,7 +14,7 @@ enum DownloadStatus: Equatable {
 
 final class DownloadItem: Identifiable, ObservableObject {
     let id: UUID = UUID()
-    let suggestedFilename: String
+    @Published var suggestedFilename: String
     @Published var destinationURL: URL?
     @Published var progress: Double = 0.0
     @Published var bytesDownloaded: Int64 = 0
@@ -24,8 +24,26 @@ final class DownloadItem: Identifiable, ObservableObject {
     weak var download: WKDownload?
     private var progressObservation: NSKeyValueObservation?
 
+    var displayName: String {
+        if let dest = destinationURL?.lastPathComponent, !dest.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return dest
+        }
+        let trimmed = suggestedFilename.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty && trimmed != "/" {
+            return trimmed
+        }
+        return "download"
+    }
+
     init(suggestedFilename: String, download: WKDownload) {
-        self.suggestedFilename = suggestedFilename
+        let trimmed = suggestedFilename.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty && trimmed != "/" {
+            self.suggestedFilename = trimmed
+        } else if let last = download.originalRequest?.url?.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines), !last.isEmpty, last != "/" {
+            self.suggestedFilename = last
+        } else {
+            self.suggestedFilename = "download"
+        }
         self.download = download
         setupProgressObservation(download.progress)
     }
@@ -104,9 +122,16 @@ final class DownloadManager: NSObject, ObservableObject, WKDownloadDelegate {
     }
 
     func register(download: WKDownload, suggestedFilename: String? = nil) {
-        let name = suggestedFilename ?? download.originalRequest?.url?.lastPathComponent ?? "download"
-        print("[isa] [Download] Registering download: '\(name)' (suggested: '\(suggestedFilename ?? "none")')")
-        let item = DownloadItem(suggestedFilename: name, download: download)
+        var name: String? = suggestedFilename?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name?.isEmpty == true || name == "/" {
+            name = nil
+        }
+        if name == nil, let last = download.originalRequest?.url?.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines), !last.isEmpty, last != "/" {
+            name = last
+        }
+        let finalName = name ?? "download"
+        print("[isa] [Download] Registering download: '\(finalName)' (suggested: '\(suggestedFilename ?? "none")')")
+        let item = DownloadItem(suggestedFilename: finalName, download: download)
         download.delegate = self
 
         itemSubscriptions[item.id] = item.objectWillChange.sink { [weak self] _ in
@@ -127,14 +152,15 @@ final class DownloadManager: NSObject, ObservableObject, WKDownloadDelegate {
         }
         objectWillChange.send()
         print("[isa] [Download] Download item added. Total active items: \(items.count)")
-        PerformanceMonitor.shared.log(event: "DownloadStart", details: name)
+        PerformanceMonitor.shared.log(event: "DownloadStart", details: finalName)
     }
 
     static func uniqueDestinationURL(for suggestedFilename: String) -> URL {
         let downloadsDir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
         try? FileManager.default.createDirectory(at: downloadsDir, withIntermediateDirectories: true)
 
-        let cleaned = suggestedFilename.isEmpty ? "download" : suggestedFilename
+        let trimmed = suggestedFilename.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = (trimmed.isEmpty || trimmed == "/") ? "download" : trimmed
         let fileExtension = (cleaned as NSString).pathExtension
         let baseName = (cleaned as NSString).deletingPathExtension
 
@@ -149,12 +175,22 @@ final class DownloadManager: NSObject, ObservableObject, WKDownloadDelegate {
     }
 
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
-        let actualName = (suggestedFilename.isEmpty || suggestedFilename == "download") ? (response.suggestedFilename ?? "download") : suggestedFilename
+        var actualName = suggestedFilename.trimmingCharacters(in: .whitespacesAndNewlines)
+        if actualName.isEmpty || actualName == "download" || actualName == "/" {
+            if let respName = response.suggestedFilename?.trimmingCharacters(in: .whitespacesAndNewlines), !respName.isEmpty && respName != "/" {
+                actualName = respName
+            } else if let urlName = response.url?.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines), !urlName.isEmpty && urlName != "/" {
+                actualName = urlName
+            } else {
+                actualName = "download"
+            }
+        }
         let destinationURL = Self.uniqueDestinationURL(for: actualName)
         print("[isa] [Download] Destination resolved for '\(actualName)' -> '\(destinationURL.path)'")
         DispatchQueue.main.async {
             if let item = self.items.first(where: { $0.download === download }) {
                 item.destinationURL = destinationURL
+                item.suggestedFilename = destinationURL.lastPathComponent
             }
             self.objectWillChange.send()
         }
@@ -166,13 +202,13 @@ final class DownloadManager: NSObject, ObservableObject, WKDownloadDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             if let item = self.items.first(where: { $0.download === download }) {
-                print("[isa] [Download] Completed item: '\(item.suggestedFilename)' at '\(item.destinationURL?.path ?? "")'")
+                print("[isa] [Download] Completed item: '\(item.displayName)' at '\(item.destinationURL?.path ?? "")'")
                 item.progress = 1.0
                 item.status = .completed
                 self.hasUnreadCompletion = true
                 self.sendCompletionNotification(for: item)
                 self.objectWillChange.send()
-                PerformanceMonitor.shared.log(event: "DownloadFinish", details: item.suggestedFilename)
+                PerformanceMonitor.shared.log(event: "DownloadFinish", details: item.displayName)
             }
         }
     }
@@ -182,7 +218,7 @@ final class DownloadManager: NSObject, ObservableObject, WKDownloadDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             if let item = self.items.first(where: { $0.download === download }) {
-                print("[isa] [Download] Marked item as failed: '\(item.suggestedFilename)'")
+                print("[isa] [Download] Marked item as failed: '\(item.displayName)'")
                 if item.status != .cancelled {
                     item.status = .failed(error.localizedDescription)
                 }
@@ -190,7 +226,7 @@ final class DownloadManager: NSObject, ObservableObject, WKDownloadDelegate {
                     try? FileManager.default.removeItem(at: url)
                 }
                 self.objectWillChange.send()
-                PerformanceMonitor.shared.log(event: "DownloadError", details: "\(item.suggestedFilename): \(error.localizedDescription)")
+                PerformanceMonitor.shared.log(event: "DownloadError", details: "\(item.displayName): \(error.localizedDescription)")
             }
         }
     }
@@ -202,7 +238,7 @@ final class DownloadManager: NSObject, ObservableObject, WKDownloadDelegate {
         guard Bundle.main.bundleIdentifier != nil else { return }
         let content = UNMutableNotificationContent()
         content.title = "Download Complete"
-        content.body = item.suggestedFilename
+        content.body = item.displayName
         content.sound = .default
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)

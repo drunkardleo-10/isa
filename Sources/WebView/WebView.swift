@@ -205,6 +205,9 @@ struct WebView: NSViewRepresentable {
                     guard let self = self, let data = data, let image = NSImage(data: data) else { return }
                     DispatchQueue.main.async {
                         self.tab?.favicon = image
+                        if let host = webView.url?.host {
+                            FaviconService.shared.setFavicon(image, for: host)
+                        }
                     }
                 }.resume()
             }

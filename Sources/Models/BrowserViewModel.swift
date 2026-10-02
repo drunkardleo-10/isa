@@ -1432,13 +1432,11 @@ final class BrowserViewModel: ObservableObject {
     }
 
     func loadFavicon(for tab: Tab, host: String) {
-        guard let iconURL = URL(string: "https://www.google.com/s2/favicons?domain=\(host)&sz=64") else { return }
-        URLSession.shared.dataTask(with: iconURL) { [weak tab] data, _, _ in
-            guard let data = data, let image = NSImage(data: data) else { return }
-            DispatchQueue.main.async {
+        FaviconService.shared.loadFavicon(for: host) { [weak tab] image in
+            if let image = image {
                 tab?.favicon = image
             }
-        }.resume()
+        }
     }
 
     func resolveURL(from input: String) -> URL? {
@@ -1467,7 +1465,7 @@ final class BrowserViewModel: ObservableObject {
             return URL(string: "http://" + trimmed)
         }
 
-        guard let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+        guard trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) != nil else {
             return nil
         }
         return searchEngine.searchURL(for: trimmed, customTemplate: customSearchEngineURL)

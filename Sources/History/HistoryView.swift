@@ -136,22 +136,12 @@ struct HistoryView: View {
                     .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
             )
 
-            Button(action: {
-                showClearSheet = true
-            }) {
-                Image(systemName: "trash")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(historyManager.historyItems.isEmpty ? .secondary.opacity(0.4) : .red.opacity(0.85))
-                    .frame(width: 26, height: 26)
-                    .background(
-                        Circle().fill(Color.red.opacity(isClearHovered && !historyManager.historyItems.isEmpty ? 0.14 : 0.08))
-                    )
-                    .contentShape(Circle())
+            if !historyManager.historyItems.isEmpty {
+                AnimatedDeleteButton(size: 26, onConfirm: {
+                    showClearSheet = true
+                })
+                .help("Clear browsing data")
             }
-            .buttonStyle(.plain)
-            .help("Clear browsing data")
-            .disabled(historyManager.historyItems.isEmpty)
-            .onHover { isClearHovered = $0 }
 
             Button(action: {
                 viewModel.dismissHistoryView()
@@ -486,18 +476,10 @@ struct HistoryRowView: View {
                     .font(.system(size: 11))
                     .foregroundColor(.secondary.opacity(0.8))
 
-                Button(action: onDelete) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(.secondary)
-                        .frame(width: 16, height: 16)
-                        .background(
-                            Circle().fill(Color.primary.opacity(isHovered ? 0.08 : 0))
-                        )
-                }
-                .buttonStyle(.plain)
-                .opacity(isHovered ? 1.0 : 0.0)
-                .help("Delete from history")
+                AnimatedDeleteButton(size: 22, onConfirm: onDelete)
+                    .opacity(isHovered ? 1.0 : 0.0)
+                    .animation(.spring(response: 0.22, dampingFraction: 0.7), value: isHovered)
+                    .help("Delete from history")
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
@@ -531,15 +513,8 @@ struct HistoryRowView: View {
     }
 
     private func loadFavicon() {
-        guard let host = URL(string: item.url)?.host, !host.isEmpty else { return }
-        let faviconURL = URL(string: "https://www.google.com/s2/favicons?domain=\(host)&sz=64")
-        guard let url = faviconURL else { return }
-
-        URLSession.shared.dataTask(with: url) { data, _, _ in
-            guard let data = data, let img = NSImage(data: data) else { return }
-            DispatchQueue.main.async {
-                self.favicon = img
-            }
-        }.resume()
+        FaviconService.shared.loadFavicon(for: item.url) { img in
+            self.favicon = img
+        }
     }
 }

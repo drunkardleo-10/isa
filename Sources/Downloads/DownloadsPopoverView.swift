@@ -27,6 +27,14 @@ struct DownloadsPopoverView: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.accentColor)
                 }
+
+                if !downloadManager.items.isEmpty {
+                    AnimatedDeleteButton(size: 32, onConfirm: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                            downloadManager.clearFinished()
+                        }
+                    })
+                }
             }
             .padding(.bottom, 2)
 
@@ -71,9 +79,12 @@ private struct DownloadRowView: View {
     @ObservedObject var item: DownloadItem
 
     private var fileIcon: NSImage {
-        let ext = (item.suggestedFilename as NSString).pathExtension
+        let name = item.displayName
+        let ext = (name as NSString).pathExtension
         let icon: NSImage
-        if let utType = UTType(filenameExtension: ext) {
+        if let url = item.destinationURL, FileManager.default.fileExists(atPath: url.path) {
+            icon = NSWorkspace.shared.icon(forFile: url.path)
+        } else if !ext.isEmpty, let utType = UTType(filenameExtension: ext) {
             icon = NSWorkspace.shared.icon(for: utType)
         } else {
             icon = NSWorkspace.shared.icon(for: .data)
@@ -119,7 +130,7 @@ private struct DownloadRowView: View {
                 .frame(width: 24, height: 24)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.suggestedFilename)
+                Text(item.displayName)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.primary)
                     .lineLimit(1)
@@ -168,15 +179,33 @@ private struct DownloadRowView: View {
                         .buttonStyle(.plain)
                         .help("Show in Finder")
                     }
+
+                    AnimatedDeleteButton(size: 30, onConfirm: {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                            DownloadManager.shared.removeItem(id: item.id)
+                        }
+                    })
                 }
 
             case .failed:
-                Image(systemName: "exclamationmark.circle.fill")
-                    .foregroundColor(.red)
-                    .font(.system(size: 13))
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundColor(.red)
+                        .font(.system(size: 13))
+
+                    AnimatedDeleteButton(size: 30, onConfirm: {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                            DownloadManager.shared.removeItem(id: item.id)
+                        }
+                    })
+                }
 
             case .cancelled:
-                EmptyView()
+                AnimatedDeleteButton(size: 30, onConfirm: {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                        DownloadManager.shared.removeItem(id: item.id)
+                    }
+                })
             }
         }
     }

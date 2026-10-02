@@ -2418,7 +2418,9 @@ struct ActiveTabOverlayView: View {
                             ForEach(Array(suggestions.enumerated()), id: \.element.id) { index, item in
                                 SuggestionRowView(
                                     item: item,
-                                    isSelected: index == selectedSuggestionIndex
+                                    isSelected: index == selectedSuggestionIndex,
+                                    searchEngine: viewModel.searchEngine,
+                                    customSearchEngineURL: viewModel.customSearchEngineURL
                                 ) {
                                     navigateWithSuggestion(item)
                                 }
@@ -2711,17 +2713,29 @@ struct ActiveTabOverlayView: View {
 struct SuggestionRowView: View {
     let item: SuggestionItem
     let isSelected: Bool
+    var searchEngine: SearchEngine = .google
+    var customSearchEngineURL: String = ""
     let onSelect: () -> Void
     @State private var isHovered: Bool = false
 
     var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 10) {
-                Image(systemName: item.isHistoryVisit ? "safari" : (item.isRecentSearch ? "clock.arrow.circlepath" : "magnifyingglass"))
-                    .font(.system(size: 12))
-                    .foregroundColor(item.isHistoryVisit ? .accentColor : (item.isRecentSearch ? .accentColor : .secondary))
-                    .frame(width: 16)
-                    .transaction { $0.animation = nil }
+                if item.isHistoryVisit {
+                    FaviconView(url: item.fullURL, fallbackIcon: "globe", size: 16)
+                        .frame(width: 16, height: 16)
+                        .transaction { $0.animation = nil }
+                } else if item.isRecentSearch {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 12))
+                        .foregroundColor(.accentColor)
+                        .frame(width: 16, height: 16)
+                        .transaction { $0.animation = nil }
+                } else {
+                    SearchEngineLogoView(engine: searchEngine, customURL: customSearchEngineURL, size: 16)
+                        .frame(width: 16, height: 16)
+                        .transaction { $0.animation = nil }
+                }
 
                 Text(item.query)
                     .font(.system(size: 13, weight: .regular))
@@ -2744,6 +2758,16 @@ struct SuggestionRowView: View {
                         .transaction { $0.animation = nil }
                 } else if item.isRecentSearch {
                     Text("Search history")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary.opacity(0.8))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule().fill(Color.primary.opacity(0.06))
+                        )
+                        .transaction { $0.animation = nil }
+                } else if item.isDirectSearch {
+                    Text(searchEngine.displayName)
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.secondary.opacity(0.8))
                         .padding(.horizontal, 6)
