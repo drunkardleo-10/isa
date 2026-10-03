@@ -78,6 +78,8 @@ struct ContentView: View {
     @State private var isHoveringTopBar: Bool = false
     @State private var isHoveringSidebar: Bool = false
     @State private var isHoveringMinimiseButton: Bool = false
+    @State private var profileHUDInfo: (name: String, symbol: String)? = nil
+    @State private var profileHUDTask: Task<Void, Never>? = nil
     @State private var isHoveringNewTabCollapsed: Bool = false
     @State private var isHoveringTopTriggerZone: Bool = false
     @State private var isHoveringLeftTriggerZone: Bool = false
@@ -268,6 +270,18 @@ struct ContentView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.98)))
                         .zIndex(200)
                 }
+
+                if let hud = profileHUDInfo {
+                    ProfileSwitchHUD(name: hud.name, symbol: hud.symbol)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.92)),
+                            removal: .opacity.combined(with: .scale(scale: 0.96))
+                        ))
+                        .padding(.bottom, 28)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .allowsHitTesting(false)
+                        .zIndex(250)
+                }
             }
         }
         .onExitCommand {
@@ -297,6 +311,13 @@ struct ContentView: View {
                     let isF = (chars == "f") || event.keyCode == 3
                     let isG = (chars == "g") || event.keyCode == 5
                     let isY = (chars == "y") || event.keyCode == 16
+
+                    if viewModel.usesProfiles && flags.contains(.control) && flags.isDisjoint(with: [.command, .option, .shift]) {
+                        if let c = event.charactersIgnoringModifiers, let digit = Int(c), digit >= 1 && digit <= 9 {
+                            viewModel.switchProfile(index: digit - 1)
+                            return nil
+                        }
+                    }
 
                     if event.keyCode == 53 {
                         if viewModel.isHistoryViewPresented {
@@ -431,6 +452,21 @@ struct ContentView: View {
                 startZenTimer()
             }
         }
+        .onChange(of: viewModel.profileID) { _, _ in
+            guard viewModel.usesProfiles, !viewModel.makingProfile else { return }
+            let p = viewModel.profile
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                profileHUDInfo = (name: p.name, symbol: p.symbol)
+            }
+            profileHUDTask?.cancel()
+            profileHUDTask = Task {
+                try? await Task.sleep(nanoseconds: 1_400_000_000)
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.24)) {
+                    profileHUDInfo = nil
+                }
+            }
+        }
         .onReceive(downloadManager.objectWillChange) { _ in }
         .onReceive(viewModel.activeTab.objectWillChange) { _ in }
         .ignoresSafeArea(.all, edges: .top)
@@ -444,9 +480,18 @@ struct ContentView: View {
             WindowDragHandle()
                 .frame(width: 78, height: 38)
 
+            if viewModel.usesProfiles {
+                ProfileDot(viewModel: viewModel)
+                    .zIndex(1)
+            }
+
             navigationBar
 
-            tabStripView
+            if viewModel.usesProfiles {
+                topBarProfilePages
+            } else {
+                tabStripView
+            }
 
             if abs(viewModel.activeTab.zoom - Tab.defaultZoom) > 0.01 {
                 Button(action: {
@@ -639,6 +684,7 @@ struct ContentView: View {
                                 PerformanceMonitor.shared.log(event: "Click", details: "New Tab (+) button")
                                 viewModel.createNewTab()
                             }
+                            .disabled(viewModel.usesProfiles && viewModel.makingProfile)
                         }
                         .padding(.trailing, 2)
                         .background(alignment: .leading) {
@@ -899,7 +945,9 @@ struct ContentView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help("New tab (⌘T)")
+                    .disabled(viewModel.usesProfiles && viewModel.makingProfile)
+                    .opacity((viewModel.usesProfiles && viewModel.makingProfile) ? 0.35 : 1.0)
+                    .help((viewModel.usesProfiles && viewModel.makingProfile) ? "" : "New tab (⌘T)")
                     .onHover { isHoveringNewTabCollapsed = $0 }
                 }
                 .padding(.horizontal, 6)
@@ -910,6 +958,11 @@ struct ContentView: View {
             }
 
             Spacer(minLength: 6)
+
+            if viewModel.usesProfiles {
+                ProfileDot(viewModel: viewModel)
+                    .padding(.bottom, 4)
+            }
 
             Button(action: {
                 viewModel.openSettings()
@@ -988,6 +1041,28 @@ struct ContentView: View {
         ))
         .help(tabDisplayTitle(for: tab))
         .contextMenu {
+            if viewModel.usesProfiles {
+                Menu("Move to Profile") {
+                    ForEach(viewModel.profiles.filter { $0.id != viewModel.profileID }) { profile in
+                        Button {
+                            viewModel.move(tab, toProfile: profile.id)
+                        } label: {
+                            Label(profile.name, systemImage: profile.symbol)
+                        }
+                    }
+                    if viewModel.profiles.count > 1 {
+                        Divider()
+                    }
+                    Button("New Profile…") {
+                        viewModel.askForProfile { profile in
+                            viewModel.move(tab, toProfile: profile.id) {
+                                viewModel.switchProfile(to: profile.id)
+                            }
+                        }
+                    }
+                }
+                Divider()
+            }
             if tab.isPinned {
                 Button("Unpin from Essentials") {
                     viewModel.togglePinTab(id: tab.id)
@@ -1186,25 +1261,31 @@ struct ContentView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .disabled(viewModel.usesProfiles && viewModel.makingProfile)
+            .opacity((viewModel.usesProfiles && viewModel.makingProfile) ? 0.35 : 1.0)
             .padding(.horizontal, 8)
             .padding(.bottom, 4)
 
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 3) {
-                    ForEach(Array(viewModel.unpinnedTabs.enumerated()), id: \.element.id) { index, tab in
-                        if sidebarDropTarget == .unpinned(index: index) {
+            if viewModel.usesProfiles {
+                sidebarProfilePages
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 3) {
+                        ForEach(Array(viewModel.unpinnedTabs.enumerated()), id: \.element.id) { index, tab in
+                            if sidebarDropTarget == .unpinned(index: index) {
+                                DropIndicatorLine()
+                            }
+                            sidebarTabRow(for: tab, index: index)
+                        }
+                        if sidebarDropTarget == .unpinned(index: viewModel.unpinnedTabs.count) {
                             DropIndicatorLine()
                         }
-                        sidebarTabRow(for: tab, index: index)
                     }
-                    if sidebarDropTarget == .unpinned(index: viewModel.unpinnedTabs.count) {
-                        DropIndicatorLine()
-                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 2)
+                    .animation(.spring(response: 0.26, dampingFraction: 0.82), value: viewModel.selectedTabId)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.82), value: viewModel.unpinnedTabs.map { $0.id })
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 2)
-                .animation(.spring(response: 0.26, dampingFraction: 0.82), value: viewModel.selectedTabId)
-                .animation(.spring(response: 0.3, dampingFraction: 0.82), value: viewModel.unpinnedTabs.map { $0.id })
             }
 
             Spacer(minLength: 6)
@@ -1213,6 +1294,12 @@ struct ContentView: View {
                 .opacity(0.10)
 
             HStack(spacing: 8) {
+                if viewModel.usesProfiles {
+                    ProfileDot(viewModel: viewModel)
+                        .offset(x: isSidebarEffectivelyExpanded ? 0 : -20)
+                        .opacity(isSidebarEffectivelyExpanded ? 1 : 0)
+                }
+
                 Button(action: {
                     viewModel.openSettings()
                 }) {
@@ -1237,6 +1324,193 @@ struct ContentView: View {
             .padding(.vertical, 10)
         }
     }
+
+    private var profileIndex: Int {
+        viewModel.makingProfile ? viewModel.profiles.count : (viewModel.profiles.firstIndex { $0.id == viewModel.profileID } ?? 0)
+    }
+
+    private var sidebarProfilePages: some View {
+        let width: CGFloat = isSidebarEffectivelyExpanded ? 240 : 48
+        let swipe = viewModel.profileSwipe
+        let at = profileIndex
+
+        return ZStack(alignment: .topLeading) {
+            sidebarProfilePage(at)
+                .offset(x: swipe)
+
+            if swipe > 0 && at > 0 {
+                sidebarProfilePage(at - 1)
+                    .offset(x: swipe - width)
+            }
+            if swipe < 0 && at < viewModel.profiles.count {
+                sidebarProfilePage(at + 1)
+                    .offset(x: swipe + width)
+            }
+        }
+        .clipped()
+    }
+
+    @ViewBuilder
+    private func sidebarProfilePage(_ index: Int) -> some View {
+        let width: CGFloat = isSidebarEffectivelyExpanded ? 240 : 48
+        Group {
+            if index == viewModel.profiles.count {
+                NewProfileCard(viewModel: viewModel, inline: false)
+            } else if index < viewModel.profiles.count {
+                if viewModel.profiles[index].id == viewModel.profileID && !viewModel.makingProfile {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 3) {
+                            ForEach(Array(viewModel.unpinnedTabs.enumerated()), id: \.element.id) { idx, tab in
+                                if sidebarDropTarget == .unpinned(index: idx) {
+                                    DropIndicatorLine()
+                                }
+                                sidebarTabRow(for: tab, index: idx)
+                            }
+                            if sidebarDropTarget == .unpinned(index: viewModel.unpinnedTabs.count) {
+                                DropIndicatorLine()
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 2)
+                        .animation(.spring(response: 0.26, dampingFraction: 0.82), value: viewModel.selectedTabId)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.82), value: viewModel.unpinnedTabs.map { $0.id })
+                    }
+                } else {
+                    let pid = viewModel.profiles[index].id
+                    let row = viewModel.parked[pid]
+                    let unpinned = (row?.tabs ?? []).filter { !$0.isPinned }
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 3) {
+                            if unpinned.isEmpty {
+                                HStack(spacing: 10) {
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .fill(Color.primary.opacity(0.07))
+                                            .frame(width: 22, height: 22)
+                                        Image(systemName: "globe")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Text("New Tab")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(.primary)
+                                        .offset(x: isSidebarEffectivelyExpanded ? 0 : -20)
+                                        .opacity(isSidebarEffectivelyExpanded ? 1 : 0)
+                                    Spacer(minLength: 4)
+                                }
+                                .padding(.horizontal, 10)
+                                .frame(height: 36)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(Color.primary.opacity(0.13))
+                                )
+                            } else {
+                                ForEach(Array(unpinned.enumerated()), id: \.element.id) { _, tab in
+                                    sidebarTabRowPreview(for: tab, isSelected: tab.id == row?.activeID)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 2)
+                    }
+                    .allowsHitTesting(false)
+                }
+            }
+        }
+        .frame(width: width, alignment: .topLeading)
+    }
+
+    private func sidebarTabRowPreview(for tab: Tab, isSelected: Bool) -> some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.primary.opacity(0.07))
+                    .frame(width: 22, height: 22)
+                tabFaviconView(for: tab)
+                    .frame(width: 15, height: 15)
+            }
+
+            Text(tabDisplayTitle(for: tab))
+                .font(.system(size: 13, weight: isSelected ? .medium : .regular))
+                .foregroundColor(isSelected ? .primary : .secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .offset(x: isSidebarEffectivelyExpanded ? 0 : -20)
+                .opacity(isSidebarEffectivelyExpanded ? 1 : 0)
+
+            Spacer(minLength: 4)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 36)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isSelected ? Color.primary.opacity(0.13) : Color.clear)
+        )
+    }
+
+    private var topBarProfilePages: some View {
+        let stripHeight: CGFloat = 38
+        let swipe = viewModel.profileSwipe
+        let at = profileIndex
+
+        return ZStack(alignment: .leading) {
+            topBarProfilePage(at)
+                .offset(y: swipe)
+
+            if swipe > 0 && at > 0 {
+                topBarProfilePage(at - 1)
+                    .offset(y: swipe - stripHeight)
+            }
+            if swipe < 0 && at < viewModel.profiles.count {
+                topBarProfilePage(at + 1)
+                    .offset(y: swipe + stripHeight)
+            }
+        }
+        .frame(height: 38)
+        .clipped()
+    }
+
+    @ViewBuilder
+    private func topBarProfilePage(_ index: Int) -> some View {
+        if index == viewModel.profiles.count {
+            NewProfileCard(viewModel: viewModel, inline: true)
+        } else if index < viewModel.profiles.count {
+            if viewModel.profiles[index].id == viewModel.profileID && !viewModel.makingProfile {
+                tabStripView
+            } else {
+                let pid = viewModel.profiles[index].id
+                let row = viewModel.parked[pid]
+                topBarTabStripPreview(tabs: row?.tabs ?? [], activeID: row?.activeID)
+            }
+        }
+    }
+
+    private func topBarTabStripPreview(tabs: [Tab], activeID: UUID?) -> some View {
+        let displayTabs = tabs.isEmpty ? [Tab(url: nil)] : tabs
+        return HStack(alignment: .center, spacing: 4) {
+            ForEach(displayTabs) { tab in
+                let isSelected = tab.id == (activeID ?? displayTabs.first?.id)
+                HStack(spacing: 6) {
+                    tabFaviconView(for: tab)
+                        .frame(width: 14, height: 14)
+                    Text(tabDisplayTitle(for: tab))
+                        .font(.system(size: 12, weight: isSelected ? .medium : .regular))
+                        .foregroundColor(isSelected ? .primary : .secondary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 10)
+                .frame(height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(isSelected ? Color.primary.opacity(0.12) : Color.primary.opacity(0.04))
+                )
+            }
+            Spacer()
+        }
+        .frame(height: 38)
+        .allowsHitTesting(false)
+    }
+
     private enum PinnedGridItem: Identifiable {
         case tab(Tab)
         case preview(Tab)
@@ -1502,6 +1776,28 @@ struct ContentView: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tileWidth)
         .help(tabDisplayTitle(for: tab))
         .contextMenu {
+            if viewModel.usesProfiles {
+                Menu("Move to Profile") {
+                    ForEach(viewModel.profiles.filter { $0.id != viewModel.profileID }) { profile in
+                        Button {
+                            viewModel.move(tab, toProfile: profile.id)
+                        } label: {
+                            Label(profile.name, systemImage: profile.symbol)
+                        }
+                    }
+                    if viewModel.profiles.count > 1 {
+                        Divider()
+                    }
+                    Button("New Profile…") {
+                        viewModel.askForProfile { profile in
+                            viewModel.move(tab, toProfile: profile.id) {
+                                viewModel.switchProfile(to: profile.id)
+                            }
+                        }
+                    }
+                }
+                Divider()
+            }
             Button("Unpin from Top") {
                 viewModel.unpinTab(id: tab.id)
             }
@@ -1649,6 +1945,28 @@ struct ContentView: View {
             removal: .scale(scale: 0.85).combined(with: .opacity)
         ))
         .contextMenu {
+            if viewModel.usesProfiles {
+                Menu("Move to Profile") {
+                    ForEach(viewModel.profiles.filter { $0.id != viewModel.profileID }) { profile in
+                        Button {
+                            viewModel.move(tab, toProfile: profile.id)
+                        } label: {
+                            Label(profile.name, systemImage: profile.symbol)
+                        }
+                    }
+                    if viewModel.profiles.count > 1 {
+                        Divider()
+                    }
+                    Button("New Profile…") {
+                        viewModel.askForProfile { profile in
+                            viewModel.move(tab, toProfile: profile.id) {
+                                viewModel.switchProfile(to: profile.id)
+                            }
+                        }
+                    }
+                }
+                Divider()
+            }
             if tab.isPinnable && viewModel.pinnedTabs.count < 8 {
                 Button("Pin to Top") {
                     viewModel.pinTab(id: tab.id)
@@ -2529,7 +2847,7 @@ struct ActiveTabOverlayView: View {
                 }
                 resetInactivityTimer()
                 eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                    if isAddShortcutPresented {
+                    if isAddShortcutPresented || viewModel.makingProfile {
                         return event
                     }
                     if tab.isNewTabState || tab.isAddressOverlayPresented {
@@ -2553,6 +2871,10 @@ struct ActiveTabOverlayView: View {
                             }
                         }
                         if !isFocused {
+                            if let firstResponder = event.window?.firstResponder,
+                               firstResponder is NSTextView || firstResponder is NSTextField {
+                                return event
+                            }
                             if let chars = event.characters, !chars.isEmpty,
                                !event.modifierFlags.contains(.command),
                                !event.modifierFlags.contains(.control) {
@@ -3017,6 +3339,28 @@ struct TabPillView: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.82), value: tabWidth)
         .help(displayTitle)
         .contextMenu {
+            if viewModel.usesProfiles {
+                Menu("Move to Profile") {
+                    ForEach(viewModel.profiles.filter { $0.id != viewModel.profileID }) { profile in
+                        Button {
+                            viewModel.move(tab, toProfile: profile.id)
+                        } label: {
+                            Label(profile.name, systemImage: profile.symbol)
+                        }
+                    }
+                    if viewModel.profiles.count > 1 {
+                        Divider()
+                    }
+                    Button("New Profile…") {
+                        viewModel.askForProfile { profile in
+                            viewModel.move(tab, toProfile: profile.id) {
+                                viewModel.switchProfile(to: profile.id)
+                            }
+                        }
+                    }
+                }
+                Divider()
+            }
             Button {
                 viewModel.toggleMute(tab: tab)
             } label: {
@@ -3086,6 +3430,7 @@ struct TabContentView: View {
         }
         .opacity(tab.id == viewModel.selectedTabId && !tab.isNewTabState ? 1 : 0)
         .allowsHitTesting(tab.id == viewModel.selectedTabId && !tab.isNewTabState && !tab.isAddressOverlayPresented && !isShieldPopoverPresented && !isDownloadsPopoverPresented && !viewModel.isHistoryViewPresented && !viewModel.isOnboardingPresented)
+        .animation(nil, value: viewModel.selectedTabId)
     }
 }
 
@@ -3221,6 +3566,34 @@ struct ZoomHUDView: View {
                 tab.triggerZoomHUD()
             }
         }
+    }
+}
+
+struct ProfileSwitchHUD: View {
+    let name: String
+    let symbol: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.primary)
+            Text(name)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundColor(.primary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                )
+                .shadow(color: Color.black.opacity(0.14), radius: 14, x: 0, y: 5)
+        )
+        .allowsHitTesting(false)
     }
 }
 

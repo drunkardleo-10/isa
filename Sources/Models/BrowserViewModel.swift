@@ -392,6 +392,7 @@ private final class WebAudioObserver: NSObject {
 
 final class Tab: Identifiable, ObservableObject {
     let id: UUID = UUID()
+    var profileID: UUID = Profile.firstID
     var onOpenNewTab: ((URL, Bool) -> Void)?
     var onLoadingFinished: (() -> Void)?
     @Published var addressText: String = ""
@@ -725,6 +726,25 @@ final class Tab: Identifiable, ObservableObject {
         )
     }
 
+    func cleanupWebView() {
+        if let wv = webView {
+            wv.stopLoading()
+            wv.navigationDelegate = nil
+            wv.uiDelegate = nil
+            wv.configuration.userContentController.removeScriptMessageHandler(forName: "openNewTab")
+            wv.removeFromSuperview()
+            webView = nil
+        }
+    }
+
+    func rehome(in newProfileID: UUID) {
+        guard profileID != newProfileID else { return }
+        profileID = newProfileID
+        if webView != nil {
+            cleanupWebView()
+        }
+    }
+
     @discardableResult
     func ensureWebView(caller: String = #function) -> WKWebView {
         if isInternal {
@@ -743,6 +763,7 @@ final class Tab: Identifiable, ObservableObject {
         if let existing = webView { return existing }
         PerformanceMonitor.shared.log(event: "WebKitInit", details: "Instantiating WKWebView for tab \(id.uuidString.prefix(6)) from [\(caller)]")
         let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = MainActor.assumeIsolated { Profiles.store(for: profileID) }
         InspectorHelper.enableDeveloperExtras(configuration.preferences)
         configuration.processPool = BrowserViewModel.sharedProcessPool
         let preferences = WKWebpagePreferences()
@@ -826,6 +847,7 @@ final class Tab: Identifiable, ObservableObject {
     }
 }
 
+@MainActor
 final class BrowserViewModel: ObservableObject {
     static let sharedProcessPool = WKProcessPool()
 
@@ -951,6 +973,69 @@ final class BrowserViewModel: ObservableObject {
         }
     }
 
+    @Published var usesProfiles: Bool = {
+        if UserDefaults.standard.object(forKey: "usesProfiles") != nil {
+            return UserDefaults.standard.bool(forKey: "usesProfiles")
+        }
+        if UserDefaults.standard.object(forKey: "usesSpaces") != nil {
+            return UserDefaults.standard.bool(forKey: "usesSpaces")
+        }
+        return true
+    }() {
+        didSet {
+            UserDefaults.standard.set(usesProfiles, forKey: "usesProfiles")
+            if !usesProfiles {
+                leaveProfiles()
+            }
+        }
+    }
+
+    @Published var profiles: [Profile] = Profiles.read() {
+        didSet {
+            Profiles.sharing = Set(profiles.filter { $0.sharesSignIns == true }.map(\.id))
+        }
+    }
+
+    @Published var profileID: UUID = {
+        if let saved = UserDefaults.standard.string(forKey: "isa_current_profile_id"),
+           let id = UUID(uuidString: saved) {
+            return id
+        }
+        if let saved = UserDefaults.standard.string(forKey: "isa_current_space_id"),
+           let id = UUID(uuidString: saved) {
+            return id
+        }
+        return Profile.firstID
+    }() {
+        didSet {
+            UserDefaults.standard.set(profileID.uuidString, forKey: "isa_current_profile_id")
+        }
+    }
+
+    var parked: [UUID: Parked] = [:]
+    @Published var profileSwipe: CGFloat = 0
+    @Published var makingProfile: Bool = false
+    @Published var newProfileName: String = ""
+    @Published var newProfileIcon: String = ""
+    @Published var newProfileShared: Bool = true
+    @Published var profileStep: Int = 1
+    var afterProfileCreated: ((Profile) -> Void)?
+
+    var profile: Profile {
+        profiles.first { $0.id == profileID } ?? profiles[0]
+    }
+
+    var parkedTabs: [Tab] {
+        parked.values.flatMap(\.tabs)
+    }
+
+    var downloadsFolder: URL {
+        guard usesProfiles, let path = profile.downloads else {
+            return FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
+        }
+        return URL(fileURLWithPath: path)
+    }
+
     func toggleSidebarCollapse() {
         withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
             isSidebarCollapsed.toggle()
@@ -1057,9 +1142,24 @@ final class BrowserViewModel: ObservableObject {
             self.tabs = [initialTab]
             self.selectedTabId = initialTab.id
         }
+        for tab in self.tabs {
+            tab.profileID = profileID
+        }
         bindTabs()
         applyAppAppearance()
         setupMemoryPressureHandler()
+        ProfileSwipe.shared.start(for: self)
+        DownloadManager.shared.customDownloadsFolder = { [weak self] in
+            guard let self = self, self.usesProfiles, let path = self.profile.downloads else { return nil }
+            return URL(fileURLWithPath: path)
+        }
+        NotificationCenter.default.addObserver(forName: Profiles.changed, object: nil, queue: .main) { [weak self] note in
+            if let list = note.object as? [Profile] {
+                Task { @MainActor [weak self] in
+                    self?.profiles = list
+                }
+            }
+        }
         PerformanceMonitor.shared.startPeriodicLogging { [weak self] in
             guard let self = self else { return "Tabs: 0" }
             let total = self.tabs.count
@@ -1113,10 +1213,12 @@ final class BrowserViewModel: ObservableObject {
     }
 
     func createNewTab(select: Bool = true) {
+        guard !(usesProfiles && makingProfile) else { return }
         if select {
             activeTab.lastActiveTime = Date()
         }
         let newTab = Tab()
+        newTab.profileID = profileID
         withAnimation(.easeOut(duration: 0.2)) {
             tabs.append(newTab)
             if select {
@@ -1129,10 +1231,12 @@ final class BrowserViewModel: ObservableObject {
     }
 
     func createNewTab(with url: URL, select: Bool = true) {
+        guard !(usesProfiles && makingProfile) else { return }
         if select {
             activeTab.lastActiveTime = Date()
         }
         let newTab = Tab(url: url)
+        newTab.profileID = profileID
         withAnimation(.easeOut(duration: 0.2)) {
             tabs.append(newTab)
             if select {
@@ -1144,6 +1248,9 @@ final class BrowserViewModel: ObservableObject {
     }
 
     func selectTab(id: UUID) {
+        if makingProfile {
+            cancelProfileCreation()
+        }
         guard let targetTab = tabs.first(where: { $0.id == id }) else { return }
         if targetTab.id != selectedTabId {
             let previousTab = activeTab
@@ -1820,5 +1927,152 @@ final class BrowserViewModel: ObservableObject {
                 sleepTab(tab)
             }
         }
+    }
+
+    func switchProfile(to id: UUID) {
+        guard usesProfiles else { return }
+        guard id != profileID, let to = profiles.firstIndex(where: { $0.id == id }) else { return }
+        let from = profiles.firstIndex(where: { $0.id == profileID }) ?? 0
+        if !makingProfile {
+            profileStep = to > from ? 1 : -1
+        }
+        parked[profileID] = Parked(tabs: tabs, activeID: selectedTabId)
+        profileID = id
+        if let back = parked.removeValue(forKey: id), !back.tabs.isEmpty {
+            tabs = back.tabs
+            selectedTabId = back.activeID ?? back.tabs.first?.id ?? UUID()
+            activeTab.ensureWebView()
+        } else {
+            let newTab = Tab(url: nil)
+            newTab.profileID = id
+            tabs = [newTab]
+            selectedTabId = newTab.id
+            newTab.ensureWebView()
+        }
+        bindTabs()
+    }
+
+    func switchProfile(index: Int) {
+        guard profiles.indices.contains(index) else { return }
+        switchProfile(to: profiles[index].id)
+    }
+
+    var freeIcon: String {
+        let used = Set(profiles.map(\.symbol))
+        return Profiles.icons.first { !used.contains($0) } ?? "briefcase"
+    }
+
+    func addProfile(named name: String, icon: String? = nil, sharesSignIns: Bool = true) {
+        makingProfile = false
+        let made = Profile(id: UUID(), name: name, colour: 0, icon: icon ?? freeIcon, sharesSignIns: sharesSignIns)
+        profiles.append(made)
+        Profiles.write(profiles)
+        if let afterProfileCreated {
+            self.afterProfileCreated = nil
+            afterProfileCreated(made)
+        } else {
+            switchProfile(to: made.id)
+        }
+    }
+
+    func moveProfile(_ id: UUID, to index: Int) {
+        guard let from = profiles.firstIndex(where: { $0.id == id }), profiles.indices.contains(index), from != index else { return }
+        profiles.move(fromOffsets: IndexSet(integer: from), toOffset: index > from ? index + 1 : index)
+        Profiles.write(profiles)
+    }
+
+    func askForProfile(then onCreated: ((Profile) -> Void)? = nil) {
+        afterProfileCreated = onCreated
+        let here = profiles.firstIndex { $0.id == profileID } ?? 0
+        ProfileSwipe.shared.start(for: self)
+        ProfileSwipe.shared.slide(self, to: profiles.count, from: here)
+    }
+
+    func cancelProfileCreation() {
+        makingProfile = false
+        profileSwipe = 0
+        newProfileName = ""
+        newProfileIcon = ""
+        newProfileShared = true
+        afterProfileCreated = nil
+    }
+
+    func renameProfile(_ id: UUID, to name: String) {
+        guard let at = profiles.firstIndex(where: { $0.id == id }), !name.isEmpty else { return }
+        profiles[at].name = name
+        Profiles.write(profiles)
+    }
+
+    func setProfileIcon(_ id: UUID, to icon: String) {
+        guard let at = profiles.firstIndex(where: { $0.id == id }) else { return }
+        profiles[at].icon = icon
+        Profiles.write(profiles)
+    }
+
+    func setProfileDownloads(_ id: UUID, to folder: URL?) {
+        guard let at = profiles.firstIndex(where: { $0.id == id }) else { return }
+        profiles[at].downloads = folder?.path
+        Profiles.write(profiles)
+    }
+
+    func deleteProfile(_ id: UUID) {
+        guard id != Profile.firstID, let at = profiles.firstIndex(where: { $0.id == id }) else { return }
+        if profileID == id {
+            switchProfile(to: Profile.firstID)
+        }
+        if let removedParked = parked.removeValue(forKey: id) {
+            for tab in removedParked.tabs {
+                tab.cleanupWebView()
+            }
+        }
+        let shared = profiles[at].sharesSignIns == true
+        profiles.remove(at: at)
+        Profiles.write(profiles)
+        if !shared {
+            Profiles.erase(id)
+        }
+    }
+
+    func leaveProfiles() {
+        if profileID != Profile.firstID {
+            switchProfile(to: Profile.firstID)
+        }
+        for (_, row) in parked {
+            for tab in row.tabs {
+                tab.cleanupWebView()
+            }
+        }
+        parked = [:]
+    }
+
+    func move(_ tab: Tab, toProfile id: UUID, then: (() -> Void)? = nil) {
+        guard usesProfiles, id != profileID,
+              profiles.contains(where: { $0.id == id }),
+              tabs.contains(where: { $0.id == tab.id }) else { return }
+
+        guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        if selectedTabId == tab.id {
+            if tabs.count > 1 {
+                let nextIndex = index == tabs.count - 1 ? index - 1 : index + 1
+                selectedTabId = tabs[nextIndex].id
+            }
+        }
+        tabs.remove(at: index)
+        if tabs.isEmpty {
+            let freshTab = Tab(url: nil)
+            freshTab.profileID = profileID
+            tabs = [freshTab]
+            selectedTabId = freshTab.id
+            freshTab.ensureWebView()
+        }
+        bindTabs()
+        tab.rehome(in: id)
+        var row = parked[id] ?? Parked(tabs: [], activeID: nil)
+        row.tabs.append(tab)
+        if row.activeID == nil {
+            row.activeID = tab.id
+        }
+        parked[id] = row
+        then?()
     }
 }

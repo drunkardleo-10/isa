@@ -186,6 +186,15 @@ struct SettingsView: View {
         VStack(spacing: 16) {
             SettingsCardGroup {
                 SettingsRow(
+                    title: "Profiles",
+                    subtitle: "Separate sets of tabs, signed in where the others are or starting afresh, switched with ⌃1–⌃9, two fingers sideways over the sidebar, or the profile's icon."
+                ) {
+                    SettingsSwitch(isOn: $viewModel.usesProfiles, label: "Profiles")
+                }
+            }
+
+            SettingsCardGroup {
+                SettingsRow(
                     title: "Zen mode",
                     subtitle: "Distraction-free browsing. The top navigation bar hides completely and reveals smoothly when you hover the top edge."
                 ) {

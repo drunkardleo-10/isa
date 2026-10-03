@@ -28,6 +28,7 @@ struct BrowserApp: App {
                     viewModel.createNewTab()
                 }
                 .keyboardShortcut("t", modifiers: .command)
+                .disabled(viewModel.usesProfiles && viewModel.makingProfile)
             }
 
             CommandGroup(replacing: .saveItem) {
@@ -65,6 +66,21 @@ struct BrowserApp: App {
                         }
                     }
                     .keyboardShortcut(KeyEquivalent(Character("\(num)")), modifiers: .command)
+                }
+            }
+
+            CommandMenu("Profiles") {
+                Button("New Profile…") {
+                    viewModel.askForProfile()
+                }
+
+                Divider()
+
+                ForEach(Array(viewModel.profiles.prefix(9).enumerated()), id: \.element.id) { index, profile in
+                    Button(profile.name) {
+                        viewModel.switchProfile(to: profile.id)
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .control)
                 }
             }
 
@@ -188,6 +204,7 @@ struct BrowserApp: App {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var viewModel: BrowserViewModel?
 

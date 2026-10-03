@@ -155,8 +155,10 @@ final class DownloadManager: NSObject, ObservableObject, WKDownloadDelegate {
         PerformanceMonitor.shared.log(event: "DownloadStart", details: finalName)
     }
 
-    static func uniqueDestinationURL(for suggestedFilename: String) -> URL {
-        let downloadsDir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
+    var customDownloadsFolder: (() -> URL?)?
+
+    static func uniqueDestinationURL(for suggestedFilename: String, in customFolder: URL? = nil) -> URL {
+        let downloadsDir = customFolder ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
         try? FileManager.default.createDirectory(at: downloadsDir, withIntermediateDirectories: true)
 
         let trimmed = suggestedFilename.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -185,7 +187,7 @@ final class DownloadManager: NSObject, ObservableObject, WKDownloadDelegate {
                 actualName = "download"
             }
         }
-        let destinationURL = Self.uniqueDestinationURL(for: actualName)
+        let destinationURL = Self.uniqueDestinationURL(for: actualName, in: customDownloadsFolder?())
         print("[isa] [Download] Destination resolved for '\(actualName)' -> '\(destinationURL.path)'")
         DispatchQueue.main.async {
             if let item = self.items.first(where: { $0.download === download }) {

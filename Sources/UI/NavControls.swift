@@ -4,29 +4,32 @@ import Foundation
 
 struct NewTabButton: View {
     let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled: Bool
     @State private var isHovered: Bool = false
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 6)
-                .fill(Color.primary.opacity(isHovered ? 0.10 : 0.05))
+                .fill(Color.primary.opacity(isEnabled && isHovered ? 0.10 : 0.05))
 
             Image(systemName: "plus")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(isHovered ? .primary : .secondary)
+                .foregroundColor(isEnabled ? (isHovered ? .primary : .secondary) : .secondary.opacity(0.35))
         }
         .frame(width: 24, height: 24)
         .contentShape(Rectangle())
         .background(NonDraggableBackground())
         .onTapGesture {
-            action()
+            if isEnabled {
+                action()
+            }
         }
         .onHover { hovering in
-            if isHovered != hovering {
+            if isEnabled && isHovered != hovering {
                 isHovered = hovering
             }
         }
-        .help("New Tab (⌘T)")
+        .help(isEnabled ? "New Tab (⌘T)" : "")
     }
 }
 
