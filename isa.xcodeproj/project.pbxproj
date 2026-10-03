@@ -14,6 +14,7 @@
 		18D840420CE76B31055554AA /* ShortcutsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5313CF64012D214F907F41D0 /* ShortcutsManager.swift */; };
 		2AD878954FC4F688E031F81C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0E62761F488091672A1488 /* ContentView.swift */; };
 		2C1D5953FD6A3BBF4C07A068 /* forward.svg in Resources */ = {isa = PBXBuildFile; fileRef = 9F6A13D7569E2BCF516C073A /* forward.svg */; };
+		2D680910EE23820A8073ED70 /* Profiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB828B4374D8C084EAB2E0 /* Profiles.swift */; };
 		33B54C5058CE967D522D8D63 /* WebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C5071766964E6B2F6EF8CB1 /* WebView.swift */; };
 		386A94F237FF37BDDF809CBB /* SwipeNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05034063BBB0FDC2630DC3B0 /* SwipeNavigation.swift */; };
 		3AEBF223884B1D6567F78E57 /* DownloadsPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 406E74793707E3327B8DB619 /* DownloadsPopoverView.swift */; };
@@ -41,6 +42,7 @@
 		A3BF6314FA945799CCA5879E /* FindBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6D4CEE8B063A43615C3B7C /* FindBarView.swift */; };
 		A8262B140ED07C17BE19F7BD /* BookmarkManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7505508A01FC523F2CB0D1DF /* BookmarkManager.swift */; };
 		ABCB025E18964EB139E96BF1 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F1BD757E39349EEBF7733D /* DownloadManager.swift */; };
+		B04B8590C1EBD751008286A6 /* ProfileViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3647D5A99A0D2BBEA5E73248 /* ProfileViews.swift */; };
 		B315A2DA933783F94B3A67A8 /* SidebarDropTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13787E52D74AB7BFF19FB888 /* SidebarDropTarget.swift */; };
 		C7D1C4C5B24F35C35B072C0E /* SearchEngineLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E60CA488101D7850284CC8BE /* SearchEngineLogoView.swift */; };
 		CC28BE87983ED7AA53A62D8D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35FF797B381C4B5514E1C3E0 /* SettingsView.swift */; };
@@ -67,6 +69,7 @@
 		25ECC1EDFD6D399A5FF0A1B5 /* google.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = google.png; sourceTree = "<group>"; };
 		28F1BD757E39349EEBF7733D /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
 		35FF797B381C4B5514E1C3E0 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		3647D5A99A0D2BBEA5E73248 /* ProfileViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileViews.swift; sourceTree = "<group>"; };
 		3C4AC25A5341FD39BC019033 /* BrowserViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserViewModel.swift; sourceTree = "<group>"; };
 		3D53DA9D0B405C5FC91DBBE3 /* PinnedTabRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedTabRecord.swift; sourceTree = "<group>"; };
 		3E4D435810BDC714A57AAEC0 /* FindBarOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindBarOverlay.swift; sourceTree = "<group>"; };
@@ -76,6 +79,7 @@
 		5313CF64012D214F907F41D0 /* ShortcutsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsManager.swift; sourceTree = "<group>"; };
 		61A41FC092F91BBFB6B2E8E2 /* NavControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavControls.swift; sourceTree = "<group>"; };
 		648C12A6BC8500EB04C76463 /* FaviconService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaviconService.swift; sourceTree = "<group>"; };
+		6BBB828B4374D8C084EAB2E0 /* Profiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Profiles.swift; sourceTree = "<group>"; };
 		700B59D84A0CDB7D7762F1D3 /* home.svg */ = {isa = PBXFileReference; path = home.svg; sourceTree = "<group>"; };
 		72261784DAB32E409CD0F35A /* cosmetic-filters.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "cosmetic-filters.json"; sourceTree = "<group>"; };
 		743BD572D7B7FC8B70AE8D69 /* isa.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = isa.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -206,6 +210,7 @@
 				3C4AC25A5341FD39BC019033 /* BrowserViewModel.swift */,
 				648C12A6BC8500EB04C76463 /* FaviconService.swift */,
 				3D53DA9D0B405C5FC91DBBE3 /* PinnedTabRecord.swift */,
+				6BBB828B4374D8C084EAB2E0 /* Profiles.swift */,
 				DFEE0525B710F87C5F1E6E7D /* WebKitImporter.swift */,
 			);
 			path = Models;
@@ -247,6 +252,7 @@
 				61A41FC092F91BBFB6B2E8E2 /* NavControls.swift */,
 				C858F3052D591A356F5CD7CB /* OnboardingView.swift */,
 				E9AEE9CEBF5FB2E1EA5EE24E /* PageCrashErrorView.swift */,
+				3647D5A99A0D2BBEA5E73248 /* ProfileViews.swift */,
 				E60CA488101D7850284CC8BE /* SearchEngineLogoView.swift */,
 				AFF529FF11BF0275E5EB2D23 /* SettingsComponents.swift */,
 				E08BA50A08D71D58B994A4B4 /* SettingsNavSection.swift */,
@@ -398,6 +404,8 @@
 				7A89E30D620EF1BCAE32EC7F /* PageCrashErrorView.swift in Sources */,
 				F5CB8C513A013A41CCE1EA3E /* PerformanceMonitor.swift in Sources */,
 				7E519D9AAC43264EF2EEBCCD /* PinnedTabRecord.swift in Sources */,
+				B04B8590C1EBD751008286A6 /* ProfileViews.swift in Sources */,
+				2D680910EE23820A8073ED70 /* Profiles.swift in Sources */,
 				C7D1C4C5B24F35C35B072C0E /* SearchEngineLogoView.swift in Sources */,
 				DD3AD5FEE850A64B1C81643B /* SettingsComponents.swift in Sources */,
 				4C0CE3855A43CFB280151441 /* SettingsNavSection.swift in Sources */,
@@ -487,7 +495,7 @@
 				CODE_SIGN_IDENTITY = "";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1200;
+				CURRENT_PROJECT_VERSION = 1300;
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = isa;
@@ -497,7 +505,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.isa.browser;
 				PRODUCT_NAME = isa;
 				SDKROOT = macosx;
@@ -569,7 +577,7 @@
 				CODE_SIGN_IDENTITY = "";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1200;
+				CURRENT_PROJECT_VERSION = 1300;
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = isa;
@@ -579,7 +587,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.isa.browser;
 				PRODUCT_NAME = isa;
 				SDKROOT = macosx;

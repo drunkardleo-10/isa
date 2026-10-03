@@ -51,11 +51,11 @@ final class Updater: ObservableObject {
     @Published private(set) var lastChecked: Date?
 
     nonisolated static var version: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.2.0"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.3.0"
     }
 
     nonisolated static var build: Int {
-        Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") ?? 1200
+        Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") ?? 1300
     }
 
     private let lastCheckKey = "isa.update.lastChecked"
